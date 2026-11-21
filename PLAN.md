@@ -105,3 +105,11 @@ Built and verified on Windows 11 (AMD RX 7600):
 - Settings: Folders page with first-start detection, indexing toggles, cache rebuild and clear.
 
 Not done: D3D11VA hardware decode (software decode was fast enough in measurements; add it only when a measured clip drops frames), a separate audio path for speeds other than 1x, hover previews cached on disk, NVIDIA folder detection verified on a machine that has NVIDIA software.
+
+## Known gaps
+- A test export file sits in `C:\Users\admin\Videos\Radeon ReLive\unknown\unknown_replay_2026.11.21-22.26-8mb.mp4`. It must be deleted by hand; the automated delete was denied.
+- No hardware decode (D3D11VA). Software decode kept 4K60 HEVC at 60 fps, so it is deferred until a measured clip drops frames.
+- Audio is muted at playback speeds other than 1x.
+- Audio was never listened to; only clock sync was checked (about 15 ms offset).
+- NVIDIA ShadowPlay folder detection is untested; the development machine has no NVIDIA software.
+- Commits are large, not one logical change each.
