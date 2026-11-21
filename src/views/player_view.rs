@@ -528,14 +528,15 @@ impl PlayerView {
 
     fn top_overlay(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         div()
-            .absolute()
-            .top_0()
-            .left_0()
-            .right_0()
-            .p_5()
+            .flex_none()
+            .h(px(64.0))
+            .px_5()
             .flex()
-            .items_start()
+            .items_center()
             .justify_between()
+            .bg(theme::background())
+            .border_b_1()
+            .border_color(theme::border_subtle())
             .child(
                 div()
                     .flex()
@@ -782,6 +783,7 @@ impl PlayerView {
             .flex()
             .flex_col()
             .bg(gpui::black())
+            .child(self.top_overlay(cx))
             .child(
                 div()
                     .relative()
@@ -789,7 +791,6 @@ impl PlayerView {
                     .min_h_0()
                     .flex()
                     .child(self.video_surface())
-                    .child(self.top_overlay(cx))
                     .when(self.debug, |this| this.child(self.debug_overlay())),
             )
             .child(
