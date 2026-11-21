@@ -18,7 +18,7 @@ Machine: Windows 11, AMD RX 7600 (AMF encoders, D3D11VA decode). Clips in `%USER
 4. Build the app, one Conventional Commit per logical step (scaffold, library scan, thumbnails, player, scrub, trim/export, compress, settings).
 
 ## Architecture (speed decisions)
-- **Decode = FFmpeg libs in-process** via `ffmpeg-next` with **D3D11VA** hardware decode (falls back to software). Bypasses Windows' paid HEVC extension, handles H.264/HEVC/AV1 from ShadowPlay/ReLive/Game Bar.
+- **Decode = FFmpeg libs in-process** via `ffmpeg-next` with frame-threaded software decode. Bypasses Windows' paid HEVC extension, handles H.264/HEVC/AV1 from ShadowPlay/ReLive/Game Bar. D3D11VA hardware decode is the planned upgrade if measurements need it.
 - **Frame path:** GPU decode → `av_hwframe_transfer_data` (NV12) → `swscale` straight to **BGRA at the on-screen pixel size** (not source size) → `gpui::RenderImage` → `img()`. Previous frame image released with `window.drop_image` so the atlas does not grow. A 1440p clip in a ~1240×700 view uploads ~3.5 MB/frame.
 - **Player threads:** demux+decode thread → bounded frame queue (≈8 frames) → UI pulls the frame matching the clock on `request_animation_frame`. Audio decoded + resampled (`swresample` → f32 at device rate), played through `cpal`; **audio clock is master**, video follows. Speed ≠ 1× goes through an `atempo` filter (libavfilter).
 - **Instant scrub:** during drag, seek to the previous keyframe and show that frame at once; when the pointer rests (~60 ms) decode forward to the exact frame. Timeline filmstrip (~28 frames) and hover preview come from a second decoder that decodes **keyframes only** (`skip_frame = NONKEY`), in background, filling left to right.
@@ -96,3 +96,12 @@ Settings pages other than Folders, macOS/Linux, stream-copy (lossless, keyframe-
 - Run the app (`cargo run --release`) against `%USERPROFILE%\Videos`: measure cold start to first painted grid, thumbnail fill time for the 66 local clips, seek latency (log timings), 1440p/4K playback with dropped-frame counter in debug builds.
 - Export a 20 s trim in each codec via AMF, verify output with bundled `ffprobe` (codec, res, fps, duration ±1 frame). Compress to 8 MB and 20 MB, assert size ≤ target.
 - Screenshot each screen and compare against the design PNGs.
+
+## Implementation status
+Built and verified on Windows 11 (AMD RX 7600):
+- Library: recursive scan on a background task (56 clips in ~9 ms), filename parsing for Radeon ReLive, ShadowPlay, Game Bar and Snipping Tool names, date groups, sort, search (Ctrl K), thumbnail size slider, lazy probe + JPEG thumbnails (visible clips first, then the rest), probe cache in `%LOCALAPPDATA%`, hover-scrub previews (12 keyframes per hovered clip, kept in memory), folder watcher with a 2.5 s quiet period.
+- Player: software decode with frame threads (4K60 HEVC averages 3.7 ms per frame in a release build), BGRA conversion at the on-screen size, audio through `cpal` with the audio clock correcting the video clock, 28-tile keyframe filmstrip, hover preview, two-stage seek (keyframe at once, exact frame after), speed 0.25 to 2x (audio muted off 1x), frame step, loop clip.
+- Trim & export and Compress: `ffmpeg.exe` subprocess with GPU encoder auto-detection, progress dialog, second pass when a compress target is overshot, native save dialog.
+- Settings: Folders page with first-start detection, indexing toggles, cache rebuild and clear.
+
+Not done: D3D11VA hardware decode (software decode was fast enough in measurements; add it only when a measured clip drops frames), a separate audio path for speeds other than 1x, hover previews cached on disk, NVIDIA folder detection verified on a machine that has NVIDIA software.
