@@ -48,8 +48,17 @@ See `PLAN.md` for the design and the build order.
 
 | Crate or binary | Purpose | Vetting |
 |---|---|---|
+| `gpui` 0.2.2 | UI, windows, rendering | Official zed-industries crate, 539k downloads. Same version and tree as vetted in blink-reminder. `cargo audit`: no vulnerabilities, only "unmaintained" notices on transitive crates (`ttf-parser`, `rustybuzz`, `paste`, `zbus` family). |
+| `ffmpeg-next` `=9.0.0` | FFmpeg bindings: demux, decode, scale, resample, thumbnails | Repo `zmwangx/rust-ffmpeg`, 9M downloads, published by the main maintainer. Default features only. Pulls `ffmpeg-sys-next` 9.1.1 (owners now also include `AdrianEddy`, `dmtrKovalenko`, who are Gyroflow developers; 9.1.0 was published by `AdrianEddy`). Its `build.rs` runs `git clone` of FFmpeg and `sh configure` only under the `build` feature, which is never enabled: we link the prebuilt library from `FFMPEG_DIR`. Build-time deps: `bindgen` (rust-lang), `cc`, `pkg-config`, `vcpkg`, `num_cpus`. Needs LLVM `libclang`. |
+| `cpal` 0.18.2 | Audio output (WASAPI) | RustAudio org, 30M downloads, since 2014. `build.rs` only reads `CPAL_ASIO_DIR`. Brings `windows` 0.62 next to gpui's 0.61 (duplicate, accepted). |
+| `notify` 8.2.2 | Watch capture folders for new clips | notify-rs org, 205M downloads. No `build.rs`. Windows backend uses `windows-sys`. Stays on 8 (vetted version) although 9 exists. |
+| `serde`, `toml` | Settings and cache files | dtolnay / toml-rs maintainers, standard crates. |
+| `anyhow` | Error handling | dtolnay. |
+| `windows` 0.61 | Registry reads for capture-folder detection, shell calls | Microsoft (`kennykerr`). Same version gpui uses. |
+| `winresource` (build) | Executable icon | Used and vetted in blink-reminder. |
+| FFmpeg `n9.0.2-61-gd59078794d` LGPL shared win64 | Hardware decode, encoders, `ffmpeg.exe` for export | BtbN/FFmpeg-Builds release `autobuild-2026-11-21-12-37`, built and published by `github-actions[bot]`. Archive SHA256 `499fa5e468f9ea6a4d38647f81f9ca4a9ac33655f30faf54b7a800ca9f4d6e5f` matches both the release `checksums.sha256` and the GitHub asset digest; `scripts/fetch-ffmpeg.ps1` refuses any other hash. LGPL build: no x264/x265 (software HEVC via `libkvazaar`, AV1 via `libsvtav1`, H.264 via `libopenh264`, GPU encoders AMF, NVENC, QSV). |
 
-Rows are added together with the commit that adds the dependency.
+Run `cargo audit` after every dependency change.
 
 ## Layout
 
@@ -60,7 +69,7 @@ Module list and responsibilities are in `PLAN.md`.
 ## Commands
 
 ```bash
-pwsh scripts/fetch-ffmpeg.ps1
+./scripts/fetch-ffmpeg.ps1
 cargo build
 cargo test
 cargo clippy --all-targets -- -D warnings
@@ -68,7 +77,7 @@ cargo fmt --check
 cargo audit
 ```
 
-The app targets Windows only. Building needs LLVM (`libclang`) for the FFmpeg bindings.
+The app targets Windows only. Building needs LLVM (`winget install LLVM.LLVM`) for the FFmpeg bindings; `.cargo/config.toml` points `LIBCLANG_PATH` at `C:/Program Files/LLVM/bin` and `FFMPEG_DIR` at `third_party/ffmpeg`. `build.rs` copies the FFmpeg DLLs and `ffmpeg.exe` next to the built executable.
 
 ## Workflow
 

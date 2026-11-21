@@ -24,7 +24,7 @@ Machine: Windows 11, AMD RX 7600 (AMF encoders, D3D11VA decode). Clips in `%USER
 - **Instant scrub:** during drag, seek to the previous keyframe and show that frame at once; when the pointer rests (~60 ms) decode forward to the exact frame. Timeline filmstrip (~28 frames) and hover preview come from a second decoder that decodes **keyframes only** (`skip_frame = NONKEY`), in background, filling left to right.
 - **Instant library:** `read_dir` (recursive) on a background thread; `DirEntry` metadata gives size and time without opening files. Title + date parsed from the filename (ReLive, ShadowPlay, Game Bar / Screen Recording patterns), falling back to modified time. Grid renders immediately. Duration/resolution/fps/codec and thumbnails are filled **lazily, visible rows first**, by a worker pool (N = cores/2) — no pre-index pass.
 - **Persistent cache** (so the second launch is instant): `%LOCALAPPDATA%\replay-library\`: `probe.bin`-style TOML/JSON of probe results keyed by path+size+mtime, and `thumbs\<hash>.jpg` (320×180) written with FFmpeg's `mjpeg` encoder and read by gpui's built-in image loader. Hover-scrub strips (8 frames per clip) cached the same way when the setting is on.
-- **Export / compress = bundled `ffmpeg.exe` subprocess** (same LGPL build), `-progress pipe:1` parsed for % / speed / remaining, cancel = kill. `-ss` before `-i` for fast accurate seek, `-hwaccel d3d11va` decode, encoder picked by availability: `{hevc,av1,h264}_{amf,nvenc,qsv}` → software `libsvtav1` / `libopenh264` / (HEVC has no LGPL software encoder → HEVC disabled if no GPU encoder). Encoder availability probed once at startup in background (1-frame null encode per candidate), cached.
+- **Export / compress = bundled `ffmpeg.exe` subprocess** (same LGPL build), `-progress pipe:1` parsed for % / speed / remaining, cancel = kill. `-ss` before `-i` for fast accurate seek, `-hwaccel d3d11va` decode, encoder picked by availability: `{hevc,av1,h264}_{amf,nvenc,qsv}` → software `libsvtav1` / `libopenh264` / `libkvazaar` (this LGPL build has all three, so every codec has a software fallback). Encoder availability probed once at startup in background (1-frame null encode per candidate), cached.
 - **Compress to size:** pure planner fn: `target_bytes, duration, source (w,h,fps)` → `(resolution, fps, video_kbps, audio_kbps)`; ladder per design (8 MB → 720p30 H.264 @ 64 kbps audio, 20 MB → 1080p30, custom scales). Budget 96% of target to absorb VBV overshoot; after encode, if file > target, re-run once at `bitrate × target/actual × 0.97`. Unit tested.
 - **Startup:** window opens with last library list from cache before any scan; FFmpeg DLLs are loaded at startup (dynamic link, ~tens of ms) — measure, and switch to delay-load only if measured slow.
 
@@ -32,10 +32,9 @@ Machine: Windows 11, AMD RX 7600 (AMF encoders, D3D11VA decode). Clips in `%USER
 | Crate | Why |
 |---|---|
 | `gpui` 0.2.x | UI, windows, rendering, images, timers |
-| `ffmpeg-next` 9.x (+ `ffmpeg-sys-next`) | Demux, decode (D3D11VA), swscale, swresample, avfilter, mjpeg thumbnails |
+| `ffmpeg-next` =9.0.0 (+ `ffmpeg-sys-next`) | Demux, decode (D3D11VA), swscale, swresample, avfilter, mjpeg thumbnails |
 | `cpal` | Audio output (WASAPI) |
 | `notify` | Watch folders for new clips (setting "Watch for new clips") |
-| `rfd` | Native save-file / folder picker (check first whether gpui's `prompt_for_new_path` / `prompt_for_paths` covers it on Windows — if yes, no `rfd`) |
 | `serde` + `toml` | Settings and probe cache |
 | `anyhow` | Errors |
 | `windows` (same version as gpui's, already in tree) | Registry reads for capture-folder detection, `SHGetKnownFolderPath`, "Show in folder" (`SHOpenFolderAndSelectItems`) |
@@ -87,10 +86,10 @@ Settings pages other than Folders, macOS/Linux, stream-copy (lossless, keyframe-
 
 ## Risks to check first
 - gpui 0.2 per-frame `RenderImage` at 60 fps: measure upload cost and confirm `drop_image` frees atlas space. Fallback: reuse a fixed-size frame and keep the scaled size ≤ view size.
-- `ffmpeg-next` 9.x vs FFmpeg 8.x headers compatibility on Windows/MSVC with bindgen.
+- `ffmpeg-next` 9.0.0 with `ffmpeg-sys-next` 9.1.1 against the FFmpeg 9.0.2 build: compiles and initializes (verified); watch for API gaps.
 - D3D11VA device creation when gpui already owns a D3D11 device — use a separate device (no sharing needed on the CPU-copy path).
 - AMF HEVC/AV1 1-pass rate control overshoot for compress-to-size (mitigated by the re-run rule).
-- HEVC export has no LGPL software encoder: disable with reason when no GPU HEVC encoder.
+- Software HEVC (`libkvazaar`) and H.264 (`libopenh264`) are slow and weak at rate control: prefer GPU encoders, show "Software" in the encoder row.
 
 ## Verification
 - `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` locally (Windows) — tests cover clip-name parsing, grouping/sort/search, compress planner, ffmpeg argument building, progress parsing, settings round-trip.
