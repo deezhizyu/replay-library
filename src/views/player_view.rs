@@ -471,6 +471,7 @@ impl PlayerView {
             .relative()
             .flex_1()
             .min_h_0()
+            .overflow_hidden()
             .child(
                 canvas(
                     move |bounds: Bounds<Pixels>, _, _| {
@@ -480,13 +481,18 @@ impl PlayerView {
                     |_, _, _, _| {},
                 )
                 .absolute()
+                .top_0()
+                .left_0()
                 .size_full(),
             )
-            .children(
-                self.current_image
-                    .clone()
-                    .map(|image| img(image).size_full().object_fit(ObjectFit::Contain)),
-            )
+            .children(self.current_image.clone().map(|image| {
+                img(image)
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .size_full()
+                    .object_fit(ObjectFit::Contain)
+            }))
     }
 
     fn timeline_element(
@@ -790,8 +796,7 @@ impl PlayerView {
                 div()
                     .flex_none()
                     .bg(theme::background())
-                    .border_t_1()
-                    .border_color(theme::border_subtle())
+                    .child(div().h(px(1.0)).w_full().bg(theme::border_subtle()))
                     .child(
                         div()
                             .relative()
