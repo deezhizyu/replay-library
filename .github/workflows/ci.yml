@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install stable --profile minimal --component clippy --component rustfmt
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: windows
+          cache-on-failure: true
+          save-if: ${{ github.ref_name == github.event.repository.default_branch }}
+      - name: Fetch FFmpeg
+        shell: pwsh
+        run: ./scripts/fetch-ffmpeg.ps1
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+      - name: Warm the release profile cache
+        if: github.ref_name == github.event.repository.default_branch
+        run: cargo build --release
