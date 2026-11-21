@@ -52,6 +52,7 @@ See `PLAN.md` for the design and the build order.
 | `ffmpeg-next` `=9.0.0` | FFmpeg bindings: demux, decode, scale, resample, thumbnails | Repo `zmwangx/rust-ffmpeg`, 9M downloads, published by the main maintainer. Default features only. Pulls `ffmpeg-sys-next` 9.1.1 (owners now also include `AdrianEddy`, `dmtrKovalenko`, who are Gyroflow developers; 9.1.0 was published by `AdrianEddy`). Its `build.rs` runs `git clone` of FFmpeg and `sh configure` only under the `build` feature, which is never enabled: we link the prebuilt library from `FFMPEG_DIR`. Build-time deps: `bindgen` (rust-lang), `cc`, `pkg-config`, `vcpkg`, `num_cpus`. Needs LLVM `libclang`. |
 | `cpal` 0.18.2 | Audio output (WASAPI) | RustAudio org, 30M downloads, since 2014. `build.rs` only reads `CPAL_ASIO_DIR`. Brings `windows` 0.62 next to gpui's 0.61 (duplicate, accepted). |
 | `notify` 8.2.2 | Watch capture folders for new clips | notify-rs org, 205M downloads. No `build.rs`. Windows backend uses `windows-sys`. Stays on 8 (vetted version) although 9 exists. |
+| `image` 0.25 | JPEG thumbnail encoding, pixel buffers for gpui images | image-rs org. Already in the tree through `gpui` (same version, same default features). |
 | `serde`, `toml` | Settings and cache files | dtolnay / toml-rs maintainers, standard crates. |
 | `anyhow` | Error handling | dtolnay. |
 | `windows` 0.61 | Registry reads for capture-folder detection, shell calls | Microsoft (`kennykerr`). Same version gpui uses. |
