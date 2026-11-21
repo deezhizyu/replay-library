@@ -11,7 +11,8 @@ use crate::media::convert::{FrameConverter, fit_within};
 use crate::media::render_image::from_bgra;
 use crate::media::source::VideoSource;
 
-pub const TILE_COUNT: usize = 28;
+pub const PLAYER_TILE_COUNT: usize = 28;
+pub const HOVER_TILE_COUNT: usize = 12;
 const TILE_WIDTH: u32 = 192;
 const TILE_HEIGHT: u32 = 108;
 
@@ -21,8 +22,8 @@ pub struct Filmstrip {
 }
 
 impl Filmstrip {
-    pub fn start(path: PathBuf, duration_seconds: f64) -> Self {
-        let tiles = Arc::new(Mutex::new(vec![None; TILE_COUNT]));
+    pub fn start(path: PathBuf, duration_seconds: f64, tile_count: usize) -> Self {
+        let tiles = Arc::new(Mutex::new(vec![None; tile_count]));
         thread::spawn({
             let tiles = tiles.clone();
             move || fill(&path, duration_seconds, &tiles)
@@ -39,7 +40,7 @@ impl Filmstrip {
 
     pub fn tile_at(&self, fraction: f64) -> Option<Arc<RenderImage>> {
         let tiles = self.tiles();
-        let index = ((fraction.clamp(0.0, 1.0) * TILE_COUNT as f64) as usize).min(TILE_COUNT - 1);
+        let index = ((fraction.clamp(0.0, 1.0) * tiles.len() as f64) as usize).min(tiles.len() - 1);
         tiles[index]
             .clone()
             .or_else(|| tiles.iter().flatten().next().cloned())
@@ -55,8 +56,12 @@ fn fill(path: &Path, duration_seconds: f64, tiles: &Mutex<Vec<Option<Arc<RenderI
         return;
     };
     let mut converter = FrameConverter::new(Pixel::BGRA, Flags::BILINEAR);
-    for index in 0..TILE_COUNT {
-        let position = duration_seconds * (index as f64 + 0.5) / TILE_COUNT as f64;
+    let tile_count = tiles
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .len();
+    for index in 0..tile_count {
+        let position = duration_seconds * (index as f64 + 0.5) / tile_count as f64;
         if source.seek_seconds(position).is_err() {
             continue;
         }

@@ -28,7 +28,7 @@ use crate::format::format_timecode;
 use crate::library::{Clip, ClipInfo, taken_label};
 use crate::local_time::{Date, LocalDateTime};
 use crate::media::audio::AudioPlayer;
-use crate::media::filmstrip::Filmstrip;
+use crate::media::filmstrip::{Filmstrip, PLAYER_TILE_COUNT};
 use crate::media::playback::Playback;
 use crate::theme;
 use crate::transcode::{EncoderCatalog, Encoders, JobHandle};
@@ -95,6 +95,8 @@ pub struct PlayerView {
     presented_frames: u32,
     presented_window_start: Instant,
     presented_fps: f32,
+    seek_started: Option<Instant>,
+    seek_latency_milliseconds: f32,
     selection: TrimSelection,
     dragged_handle: Option<Handle>,
     loop_clip: bool,
@@ -119,7 +121,8 @@ impl PlayerView {
         let target = initial_target(window);
         let playback = Playback::open(clip.path.clone(), info.clone(), target);
         let clip_path = clip.path.clone();
-        let filmstrip = Filmstrip::start(clip.path.clone(), info.duration_seconds);
+        let filmstrip =
+            Filmstrip::start(clip.path.clone(), info.duration_seconds, PLAYER_TILE_COUNT);
         let today = LocalDateTime::now().map_or(
             Date {
                 year: 1970,
@@ -198,6 +201,8 @@ impl PlayerView {
             presented_frames: 0,
             presented_window_start: Instant::now(),
             presented_fps: 0.0,
+            seek_started: None,
+            seek_latency_milliseconds: 0.0,
             dragged_handle: None,
             loop_clip: false,
             export_options,
@@ -262,6 +267,7 @@ impl PlayerView {
         self.base_position = seconds;
         self.base_instant = Instant::now();
         self.awaiting_frame = true;
+        self.seek_started.get_or_insert_with(Instant::now);
         self.playback.seek(seconds, exact);
         self.audio.seek(seconds);
     }
@@ -394,6 +400,9 @@ impl PlayerView {
             }
             self.awaiting_frame = false;
             self.presented_frames += 1;
+            if let Some(started) = self.seek_started.take() {
+                self.seek_latency_milliseconds = started.elapsed().as_secs_f32() * 1000.0;
+            }
         }
         let window_seconds = self.presented_window_start.elapsed().as_secs_f32();
         if window_seconds >= 1.0 {
@@ -579,11 +588,12 @@ impl PlayerView {
             .font_family(theme::MONO_FONT)
             .text_size(px(11.0))
             .child(SharedString::from(format!(
-                "present {:.1} fps · decode {:.1} ms · queue {} · decoded {} · audio {}",
+                "present {:.1} fps · decode {:.1} ms · queue {} · decoded {} · seek {:.0} ms · audio {}",
                 self.presented_fps,
                 stats.average_frame_milliseconds,
                 stats.queued,
                 stats.decoded_frames,
+                self.seek_latency_milliseconds,
                 self.audio
                     .position()
                     .map_or("none".to_string(), |seconds| format!(

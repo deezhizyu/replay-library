@@ -109,7 +109,7 @@ fn scan_directory(directory: &Path, seen: &mut HashSet<PathBuf>, clips: &mut Vec
         };
         if metadata.is_dir() {
             scan_directory(&path, seen, clips);
-        } else if is_video(&path) && seen.insert(path.clone()) {
+        } else if metadata.len() > 0 && is_video(&path) && seen.insert(path.clone()) {
             clips.push(clip_from_file(path, &metadata));
         }
     }

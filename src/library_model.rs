@@ -11,11 +11,13 @@ use crate::app_paths;
 use crate::indexer::{IndexJob, Indexer};
 use crate::library::{self, Clip, Group, SortOrder, group_order, visible_order};
 use crate::local_time::{Date, LocalDateTime};
+use crate::media::filmstrip::{Filmstrip, HOVER_TILE_COUNT};
 use crate::probe_cache::{self, ProbeEntries};
 use crate::settings::FolderConfig;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(80);
 const PROBE_SAVE_INTERVAL: Duration = Duration::from_secs(3);
+const MAXIMUM_HOVER_STRIPS: usize = 24;
 const RESCAN_QUIET_PERIOD: Duration = Duration::from_millis(2_500);
 
 struct ScanOutput {
@@ -36,6 +38,7 @@ pub struct LibraryModel {
     probes: ProbeEntries,
     probes_dirty: bool,
     thumbnails_ready: HashSet<String>,
+    hover_strips: HashMap<String, Filmstrip>,
     indexer: Indexer,
     today: Date,
     folders: Vec<FolderConfig>,
@@ -86,6 +89,7 @@ impl LibraryModel {
             probes: ProbeEntries::new(),
             probes_dirty: false,
             thumbnails_ready: HashSet::new(),
+            hover_strips: HashMap::new(),
             indexer: Indexer::start(),
             today: LocalDateTime::now().map_or(
                 Date {
@@ -232,6 +236,21 @@ impl LibraryModel {
         self.sort = sort;
         self.refresh_view();
         cx.notify();
+    }
+
+    pub fn hover_strip(&mut self, clip_index: usize) -> Option<Filmstrip> {
+        let clip = self.clips.get(clip_index)?;
+        let duration = clip.info.as_ref()?.duration_seconds;
+        if !self.hover_strips.contains_key(&clip.id)
+            && self.hover_strips.len() >= MAXIMUM_HOVER_STRIPS
+        {
+            self.hover_strips.clear();
+        }
+        let strip = self
+            .hover_strips
+            .entry(clip.id.clone())
+            .or_insert_with(|| Filmstrip::start(clip.path.clone(), duration, HOVER_TILE_COUNT));
+        Some(strip.clone())
     }
 
     pub fn thumbnail_ready(&self, clip: &Clip) -> bool {

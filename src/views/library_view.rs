@@ -1,8 +1,8 @@
 use gpui::prelude::*;
 use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, FocusHandle, Focusable, FontWeight,
-    IntoElement, ListAlignment, ListState, ObjectFit, Render, SharedString, Window, actions,
-    deferred, div, img, list, px,
+    IntoElement, ListAlignment, ListState, MouseMoveEvent, ObjectFit, Render, RenderImage,
+    SharedString, Window, actions, deferred, div, img, list, px,
 };
 
 use crate::components::icon::icon;
@@ -11,8 +11,10 @@ use crate::components::text_field::{TextChanged, TextField};
 use crate::format::{format_count, format_duration, format_size};
 use crate::library::{Clip, SortOrder};
 use crate::library_model::LibraryModel;
+use crate::media::filmstrip::{Filmstrip, HOVER_TILE_COUNT};
 use crate::settings::Settings;
 use crate::theme;
+use std::sync::Arc;
 
 actions!(library, [FocusSearch]);
 
@@ -20,10 +22,18 @@ const PAGE_PADDING: f32 = 32.0;
 const CARD_GAP: f32 = 16.0;
 const MINIMUM_CARD_WIDTH_RANGE: (f32, f32) = (180.0, 360.0);
 const TEXT_BLOCK_HEIGHT: f32 = 46.0;
+const CHROME_HEIGHT: f32 = 44.0 + 64.0 + 30.0 + 16.0;
+const SCROLLBAR_MINIMUM_THUMB: f32 = 40.0;
 
 pub enum LibraryEvent {
     OpenClip(usize),
     OpenSettings,
+}
+
+struct HoverState {
+    clip_index: usize,
+    fraction: f32,
+    strip: Option<Filmstrip>,
 }
 
 enum Row {
@@ -39,6 +49,7 @@ pub struct LibraryView {
     rows_key: (u64, usize),
     card_width: f32,
     sort_menu_open: bool,
+    hover: Option<HoverState>,
     focus_handle: FocusHandle,
 }
 
@@ -67,8 +78,46 @@ impl LibraryView {
             rows_key: (u64::MAX, 0),
             card_width: 260.0,
             sort_menu_open: false,
+            hover: None,
             focus_handle: cx.focus_handle(),
         }
+    }
+
+    fn hover_move(
+        &mut self,
+        clip_index: usize,
+        column: usize,
+        pointer_x: f32,
+        cx: &mut Context<Self>,
+    ) {
+        if !cx.global::<Settings>().hover_scrub_previews {
+            return;
+        }
+        let left = PAGE_PADDING + column as f32 * (self.card_width + CARD_GAP);
+        let fraction = ((pointer_x - left) / self.card_width).clamp(0.0, 1.0);
+        let tile_of = |fraction: f32| (fraction * HOVER_TILE_COUNT as f32) as usize;
+        let unchanged = self.hover.as_ref().is_some_and(|hover| {
+            hover.clip_index == clip_index && tile_of(hover.fraction) == tile_of(fraction)
+        });
+        if unchanged {
+            return;
+        }
+        let strip = match self.hover.take() {
+            Some(HoverState {
+                clip_index: previous,
+                strip,
+                ..
+            }) if previous == clip_index && strip.is_some() => strip,
+            _ => self
+                .model
+                .update(cx, |model, _| model.hover_strip(clip_index)),
+        };
+        self.hover = Some(HoverState {
+            clip_index,
+            fraction,
+            strip,
+        });
+        cx.notify();
     }
 
     fn columns(&self, window: &Window, thumbnail_size: f32) -> usize {
@@ -132,7 +181,10 @@ impl LibraryView {
                 };
                 let cards: Vec<AnyElement> = entries
                     .iter()
-                    .map(|(clip_index, clip, ready)| self.card(*clip_index, clip, *ready, cx))
+                    .enumerate()
+                    .map(|(column, (clip_index, clip, ready))| {
+                        self.card(*clip_index, column, clip, *ready, cx)
+                    })
                     .collect();
                 div()
                     .flex()
@@ -147,10 +199,18 @@ impl LibraryView {
     fn card(
         &self,
         clip_index: usize,
+        column: usize,
         clip: &Clip,
         thumbnail_ready: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let hover = self
+            .hover
+            .as_ref()
+            .filter(|hover| hover.clip_index == clip_index);
+        let hover_fraction = hover.map(|hover| hover.fraction);
+        let hover_tile: Option<Arc<RenderImage>> =
+            hover.and_then(|hover| hover.strip.as_ref()?.tile_at(f64::from(hover.fraction)));
         let group_name = SharedString::from(format!("clip-{clip_index}"));
         let thumbnail_height = self.card_width * 9.0 / 16.0;
         let badge = |text: SharedString| {
@@ -176,6 +236,20 @@ impl LibraryView {
             .gap(px(10.0))
             .cursor_pointer()
             .on_click(cx.listener(move |_, _, _, cx| cx.emit(LibraryEvent::OpenClip(clip_index))))
+            .on_mouse_move(cx.listener(move |this, event: &MouseMoveEvent, _, cx| {
+                this.hover_move(clip_index, column, f32::from(event.position.x), cx);
+            }))
+            .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
+                if !*hovered
+                    && this
+                        .hover
+                        .as_ref()
+                        .is_some_and(|hover| hover.clip_index == clip_index)
+                {
+                    this.hover = None;
+                    cx.notify();
+                }
+            }))
             .child(
                 div()
                     .relative()
@@ -192,9 +266,28 @@ impl LibraryView {
                                 .object_fit(ObjectFit::Cover),
                         )
                     })
+                    .children(hover_tile.map(|image| {
+                        div()
+                            .absolute()
+                            .top_0()
+                            .left_0()
+                            .size_full()
+                            .child(img(image).size_full().object_fit(ObjectFit::Cover))
+                    }))
+                    .children(hover_fraction.map(|fraction| {
+                        div()
+                            .absolute()
+                            .bottom_0()
+                            .left_0()
+                            .h(px(4.0))
+                            .w(gpui::relative(fraction))
+                            .bg(theme::accent())
+                    }))
                     .child(
                         div()
                             .absolute()
+                            .top_0()
+                            .left_0()
                             .size_full()
                             .rounded(px(10.0))
                             .border_2()
@@ -222,6 +315,8 @@ impl LibraryView {
                     .child(
                         div()
                             .absolute()
+                            .top_0()
+                            .left_0()
                             .size_full()
                             .flex()
                             .items_center()
@@ -422,6 +517,25 @@ impl LibraryView {
             }))
     }
 
+    fn scrollbar(&self, window: &Window) -> impl IntoElement + use<> {
+        let viewport = f32::from(window.viewport_size().height) - CHROME_HEIGHT;
+        let scrollable = f32::from(self.list_state.max_offset_for_scrollbar().height);
+        let offset = f32::from(self.list_state.scroll_px_offset_for_scrollbar().y).abs();
+        let visible = scrollable > 0.0 && viewport > 0.0;
+        let thumb_height =
+            (viewport * viewport / (viewport + scrollable)).max(SCROLLBAR_MINIMUM_THUMB);
+        let thumb_top = (viewport - thumb_height) * (offset / scrollable.max(1.0)).clamp(0.0, 1.0);
+        div().when(visible, |this| {
+            this.absolute()
+                .top(px(thumb_top + 8.0))
+                .right(px(8.0))
+                .w(px(4.0))
+                .h(px(thumb_height))
+                .rounded_full()
+                .bg(theme::border_strong())
+        })
+    }
+
     fn footer(&self, cx: &App) -> impl IntoElement {
         let model = self.model.read(cx);
         let remaining = model.indexing_remaining();
@@ -507,6 +621,7 @@ impl Render for LibraryView {
                         )
                         .size_full(),
                     )
+                    .child(self.scrollbar(window))
                     .children(empty_message.map(|message| {
                         div()
                             .pt(px(48.0))
