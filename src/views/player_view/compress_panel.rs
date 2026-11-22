@@ -87,6 +87,7 @@ impl PlayerView {
         div()
             .flex()
             .flex_col()
+            .min_h_full()
             .gap_4()
             .child(
                 div()
@@ -159,7 +160,13 @@ impl PlayerView {
                     .child(table_row("Audio bitrate", format!("{} kbps", chosen.audio_kbps)))
                     .child(table_row("Result", format_size(result))),
             ))
-            .child(encoder_row(encoder.map(|found| (found.name, found.hardware))))
+            .child(
+                div()
+                    .mt_auto()
+                    .flex()
+                    .flex_col()
+                    .gap_4()
+                    .child(encoder_row(encoder.map(|found| (found.name, found.hardware))))
             .child(
                 button("compress-and-save", "Compress & save…", Some("zap"), ButtonKind::Primary)
                     .w_full()
@@ -167,17 +174,6 @@ impl PlayerView {
                     .when(encoder.is_none(), |this| this.opacity(0.5))
                     .on_click(cx.listener(|this, _, window, cx| this.begin_compress(window, cx))),
             )
-            .child(
-                div()
-                    .id("switch-to-trim")
-                    .flex()
-                    .justify_center()
-                    .text_size(px(13.0))
-                    .text_color(theme::text_muted())
-                    .cursor_pointer()
-                    .hover(|style| style.text_color(theme::text()))
-                    .on_click(cx.listener(|this, _, _, cx| this.enter_mode(Mode::Trim, cx)))
-                    .child("Trim & pick resolution instead"),
             )
     }
 }

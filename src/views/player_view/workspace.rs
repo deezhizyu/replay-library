@@ -149,21 +149,6 @@ impl PlayerView {
                         .child(icon("repeat", 16.0, loop_color))
                         .child("Loop clip"),
                 )
-                .child(
-                    div()
-                        .font_family(theme::MONO_FONT)
-                        .text_size(px(11.0))
-                        .text_color(theme::text_dim())
-                        .child("I set in · O set out · Space play"),
-                )
-            })
-            .when(!trimming, |this| {
-                this.child(
-                    div()
-                        .text_size(px(12.0))
-                        .text_color(theme::text_muted())
-                        .child("Compressing the whole video"),
-                )
             })
     }
 

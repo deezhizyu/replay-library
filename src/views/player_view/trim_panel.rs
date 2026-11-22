@@ -13,6 +13,7 @@ impl PlayerView {
         div()
             .flex()
             .flex_col()
+            .min_h_full()
             .gap_4()
             .child(
                 div()
@@ -153,67 +154,67 @@ impl PlayerView {
                         self.audio_bitrate_field.clone(),
                     )),
             )
-            .child(encoder_row(
-                encoder.map(|found| (found.name, found.hardware)),
-            ))
             .child(
                 div()
+                    .mt_auto()
                     .flex()
-                    .items_end()
-                    .justify_between()
+                    .flex_col()
+                    .gap_4()
+                    .child(encoder_row(
+                        encoder.map(|found| (found.name, found.hardware)),
+                    ))
                     .child(
                         div()
                             .flex()
-                            .flex_col()
+                            .items_end()
+                            .justify_between()
                             .child(
                                 div()
-                                    .text_size(px(12.0))
-                                    .text_color(theme::text_muted())
-                                    .child("Estimated size"),
+                                    .flex()
+                                    .flex_col()
+                                    .child(
+                                        div()
+                                            .text_size(px(12.0))
+                                            .text_color(theme::text_muted())
+                                            .child("Estimated size"),
+                                    )
+                                    .child(
+                                        div()
+                                            .font_family(theme::MONO_FONT)
+                                            .text_size(px(11.0))
+                                            .text_color(theme::text_dim())
+                                            .child(SharedString::from(format!(
+                                                "{:.1} Mbps · {} fps",
+                                                f64::from(self.export_options.video_kbps) / 1000.0,
+                                                self.export_options.frame_rate
+                                            ))),
+                                    ),
                             )
                             .child(
                                 div()
                                     .font_family(theme::MONO_FONT)
-                                    .text_size(px(11.0))
-                                    .text_color(theme::text_dim())
+                                    .text_size(px(26.0))
+                                    .font_weight(FontWeight::MEDIUM)
                                     .child(SharedString::from(format!(
-                                        "{:.1} Mbps · {} fps",
-                                        f64::from(self.export_options.video_kbps) / 1000.0,
-                                        self.export_options.frame_rate
+                                        "≈ {}",
+                                        format_size(estimated)
                                     ))),
                             ),
                     )
                     .child(
-                        div()
-                            .font_family(theme::MONO_FONT)
-                            .text_size(px(26.0))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(SharedString::from(format!("≈ {}", format_size(estimated)))),
+                        button(
+                            "export-clip",
+                            "Export…",
+                            Some("download"),
+                            ButtonKind::Primary,
+                        )
+                        .w_full()
+                        .h(px(52.0))
+                        .when(encoder.is_none(), |this| this.opacity(0.5))
+                        .on_click(
+                            cx.listener(|this, _, window, cx| this.begin_trim_export(window, cx)),
+                        ),
                     ),
-            )
-            .child(
-                button(
-                    "export-clip",
-                    "Export…",
-                    Some("download"),
-                    ButtonKind::Primary,
-                )
-                .w_full()
-                .h(px(52.0))
-                .when(encoder.is_none(), |this| this.opacity(0.5))
-                .on_click(cx.listener(|this, _, window, cx| this.begin_trim_export(window, cx))),
-            )
-            .child(
-                div()
-                    .id("switch-to-compress")
-                    .flex()
-                    .justify_center()
-                    .text_size(px(13.0))
-                    .text_color(theme::text_muted())
-                    .cursor_pointer()
-                    .hover(|style| style.text_color(theme::text()))
-                    .on_click(cx.listener(|this, _, _, cx| this.enter_mode(Mode::Compress, cx)))
-                    .child("Compress to 8 / 20 MB instead"),
             )
     }
 }
