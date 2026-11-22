@@ -34,26 +34,32 @@ impl PlayerView {
                     .min_w_0()
                     .flex()
                     .flex_col()
-                    .gap_3()
-                    .px_8()
-                    .pt_4()
-                    .pb_6()
                     .child(self.workspace_header(cx))
                     .child(
                         div()
                             .flex_1()
                             .min_h_0()
                             .flex()
-                            .rounded(px(10.0))
-                            .overflow_hidden()
-                            .bg(gpui::black())
-                            .border_1()
-                            .border_color(theme::border_subtle())
-                            .child(self.video_surface())
-                            .when(self.debug, |this| this.child(self.debug_overlay())),
-                    )
-                    .child(self.transport_row(trimming, cx))
-                    .child(bottom),
+                            .flex_col()
+                            .gap_3()
+                            .px_8()
+                            .pb_6()
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_h_0()
+                                    .flex()
+                                    .rounded(px(10.0))
+                                    .overflow_hidden()
+                                    .bg(gpui::black())
+                                    .border_1()
+                                    .border_color(theme::border_subtle())
+                                    .child(self.video_surface())
+                                    .when(self.debug, |this| this.child(self.debug_overlay())),
+                            )
+                            .child(self.transport_row(trimming, cx))
+                            .child(bottom),
+                    ),
             )
             .child(
                 div()
@@ -80,8 +86,9 @@ impl PlayerView {
 
     fn workspace_header(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         div()
-            .h(px(48.0))
+            .h(px(64.0))
             .flex_none()
+            .px_5()
             .flex()
             .items_center()
             .gap_3()

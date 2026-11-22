@@ -257,22 +257,20 @@ impl Render for SettingsView {
                     .w(px(264.0))
                     .flex_none()
                     .h_full()
-                    .p_3()
-                    .pt_5()
                     .flex()
                     .flex_col()
-                    .gap_2()
                     .border_r_1()
                     .border_color(theme::border_subtle())
                     .child(
-                        icon_button("settings-back", "arrow-left", 40.0)
-                            .on_click(cx.listener(|_, _, _, cx| cx.emit(SettingsEvent::Back))),
+                        div().h(px(64.0)).flex_none().px_5().flex().items_center().child(
+                            icon_button("settings-back", "arrow-left", 40.0)
+                                .on_click(cx.listener(|_, _, _, cx| cx.emit(SettingsEvent::Back))),
+                        ),
                     )
-                    .child(
+                    .child(div().px_3().child(
                         div()
                             .h(px(44.0))
                             .px_3()
-                            .mt_2()
                             .flex()
                             .items_center()
                             .gap_3()
@@ -282,7 +280,7 @@ impl Render for SettingsView {
                             .font_weight(FontWeight::SEMIBOLD)
                             .child(icon("folder", 18.0, theme::accent()))
                             .child("Folders"),
-                    ),
+                    )),
             )
             .child(
                 div()
