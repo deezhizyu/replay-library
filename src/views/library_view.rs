@@ -2,10 +2,11 @@ use gpui::prelude::*;
 use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, FocusHandle, Focusable, FontWeight,
     IntoElement, ListAlignment, ListState, MouseMoveEvent, ObjectFit, Render, RenderImage,
-    SharedString, Window, actions, deferred, div, img, list, px,
+    SharedString, Window, actions, deferred, div, img, list, point, px,
 };
 
 use crate::components::icon::icon;
+use crate::components::pointer_surface::{PointerPhase, pointer_surface};
 use crate::components::slider::slider;
 use crate::components::text_field::{TextChanged, TextField};
 use crate::format::{format_count, format_duration, format_size};
@@ -22,8 +23,10 @@ const PAGE_PADDING: f32 = 32.0;
 const CARD_GAP: f32 = 16.0;
 const MINIMUM_CARD_WIDTH_RANGE: (f32, f32) = (180.0, 360.0);
 const TEXT_BLOCK_HEIGHT: f32 = 46.0;
-const CHROME_HEIGHT: f32 = 44.0 + 64.0 + 30.0 + 16.0;
+const CHROME_HEIGHT: f32 = 34.0 + 64.0 + 30.0 + 16.0;
 const SCROLLBAR_MINIMUM_THUMB: f32 = 40.0;
+const SCROLLBAR_INSET: f32 = 8.0;
+const SCROLLBAR_TRACK_WIDTH: f32 = 20.0;
 
 pub enum LibraryEvent {
     OpenClip(usize),
@@ -517,22 +520,47 @@ impl LibraryView {
             }))
     }
 
-    fn scrollbar(&self, window: &Window) -> impl IntoElement + use<> {
+    fn scrollbar(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let viewport = f32::from(window.viewport_size().height) - CHROME_HEIGHT;
         let scrollable = f32::from(self.list_state.max_offset_for_scrollbar().height);
         let offset = f32::from(self.list_state.scroll_px_offset_for_scrollbar().y).abs();
         let visible = scrollable > 0.0 && viewport > 0.0;
-        let thumb_height =
-            (viewport * viewport / (viewport + scrollable)).max(SCROLLBAR_MINIMUM_THUMB);
+        let thumb_height = scrollbar_thumb_height(viewport, scrollable);
         let thumb_top = (viewport - thumb_height) * (offset / scrollable.max(1.0)).clamp(0.0, 1.0);
-        div().when(visible, |this| {
+        let list_state = self.list_state.clone();
+        let view = cx.entity();
+        pointer_surface("library-scrollbar", window, cx, move |event, cx| {
+            match event.phase {
+                PointerPhase::Down => list_state.scrollbar_drag_started(),
+                PointerPhase::Up => list_state.scrollbar_drag_ended(),
+                _ => {}
+            }
+            if matches!(
+                event.phase,
+                PointerPhase::Down | PointerPhase::Drag | PointerPhase::Up
+            ) {
+                let target = scrollbar_offset(f32::from(event.position.y), viewport, scrollable);
+                list_state.set_offset_from_scrollbar(point(px(0.0), px(-target)));
+                view.update(cx, |_, cx| cx.notify());
+            }
+        })
+        .when(visible, |this| {
             this.absolute()
-                .top(px(thumb_top + 8.0))
-                .right(px(8.0))
-                .w(px(4.0))
-                .h(px(thumb_height))
-                .rounded_full()
-                .bg(theme::border_strong())
+                .top_0()
+                .right_0()
+                .h_full()
+                .w(px(SCROLLBAR_TRACK_WIDTH))
+                .cursor_pointer()
+                .child(
+                    div()
+                        .absolute()
+                        .top(px(thumb_top + SCROLLBAR_INSET))
+                        .right(px(SCROLLBAR_INSET))
+                        .w(px(4.0))
+                        .h(px(thumb_height))
+                        .rounded_full()
+                        .bg(theme::border_strong()),
+                )
         })
     }
 
@@ -565,6 +593,16 @@ impl LibraryView {
                     .child(format!("Indexing {} clips", format_count(remaining)))
             }))
     }
+}
+
+fn scrollbar_thumb_height(viewport: f32, scrollable: f32) -> f32 {
+    (viewport * viewport / (viewport + scrollable)).max(SCROLLBAR_MINIMUM_THUMB)
+}
+
+fn scrollbar_offset(pointer_y: f32, viewport: f32, scrollable: f32) -> f32 {
+    let thumb_height = scrollbar_thumb_height(viewport, scrollable);
+    let travel = (viewport - thumb_height).max(1.0);
+    ((pointer_y - SCROLLBAR_INSET - thumb_height / 2.0) / travel).clamp(0.0, 1.0) * scrollable
 }
 
 impl Render for LibraryView {
@@ -609,7 +647,7 @@ impl Render for LibraryView {
                         )
                         .size_full(),
                     )
-                    .child(self.scrollbar(window))
+                    .child(self.scrollbar(window, cx))
                     .children(empty_message.map(|message| {
                         div()
                             .pt(px(48.0))
@@ -619,5 +657,21 @@ impl Render for LibraryView {
                     })),
             )
             .child(self.footer(cx))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scrollbar_pointer_maps_to_the_scroll_range() {
+        let thumb = scrollbar_thumb_height(600.0, 1200.0);
+        assert_eq!(scrollbar_offset(0.0, 600.0, 1200.0), 0.0);
+        assert_eq!(
+            scrollbar_offset(SCROLLBAR_INSET + thumb / 2.0 + 150.0, 600.0, 1200.0),
+            1200.0 * 150.0 / (600.0 - thumb)
+        );
+        assert_eq!(scrollbar_offset(10_000.0, 600.0, 1200.0), 1200.0);
     }
 }
