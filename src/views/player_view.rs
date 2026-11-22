@@ -34,6 +34,7 @@ use crate::theme;
 use crate::transcode::{EncoderCatalog, Encoders, JobHandle};
 use crate::trim_selection::TrimSelection;
 
+const DEFAULT_VOLUME: f32 = 0.8;
 const HOVER_PREVIEW_WIDTH: f32 = 192.0;
 const SPEEDS: [f64; 5] = [0.25, 0.5, 1.0, 1.5, 2.0];
 const SEEK_STEP_SECONDS: f64 = 5.0;
@@ -191,7 +192,7 @@ impl PlayerView {
             base_position: 0.0,
             base_instant: Instant::now(),
             speed_index: 2,
-            volume: 0.8,
+            volume: DEFAULT_VOLUME,
             muted: false,
             hover_fraction: None,
             timeline_width: 0.0,
@@ -669,6 +670,7 @@ impl PlayerView {
 
     fn controls(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let view = cx.entity();
+        let silent = self.muted || self.volume == 0.0;
         div()
             .h(px(86.0))
             .flex_none()
@@ -687,10 +689,17 @@ impl PlayerView {
             )
             .child(div().w(px(16.0)))
             .child(
-                icon_button("mute", "volume", 36.0).on_click(cx.listener(|this, _, _, cx| {
-                    this.muted = !this.muted;
-                    cx.notify();
-                })),
+                icon_button("mute", if silent { "volume-x" } else { "volume" }, 36.0).on_click(
+                    cx.listener(|this, _, _, cx| {
+                        if this.volume == 0.0 {
+                            this.volume = DEFAULT_VOLUME;
+                            this.muted = false;
+                        } else {
+                            this.muted = !this.muted;
+                        }
+                        cx.notify();
+                    }),
+                ),
             )
             .child(slider(
                 "volume",

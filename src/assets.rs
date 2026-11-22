@@ -20,6 +20,7 @@ impl AssetSource for EmbeddedAssets {
             "icons/skip-back.svg" => include_bytes!("../assets/icons/skip-back.svg"),
             "icons/skip-forward.svg" => include_bytes!("../assets/icons/skip-forward.svg"),
             "icons/volume.svg" => include_bytes!("../assets/icons/volume.svg"),
+            "icons/volume-x.svg" => include_bytes!("../assets/icons/volume-x.svg"),
             "icons/fullscreen.svg" => include_bytes!("../assets/icons/fullscreen.svg"),
             "icons/zap.svg" => include_bytes!("../assets/icons/zap.svg"),
             "icons/scissors.svg" => include_bytes!("../assets/icons/scissors.svg"),
