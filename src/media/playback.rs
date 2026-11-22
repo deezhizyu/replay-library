@@ -17,6 +17,7 @@ use crate::mutex_ext::MutexExt as _;
 
 const QUEUE_CAPACITY: usize = 8;
 const FALLBACK_FRAME_RATE: f64 = 60.0;
+const FULL_DECODE_MARGIN_SECONDS: f64 = 0.5;
 
 struct VideoFrame {
     presentation_seconds: f64,
@@ -184,6 +185,10 @@ fn keeps_frame(scrub_frame: bool, current_generation: bool) -> bool {
     scrub_frame || current_generation
 }
 
+fn discards_non_reference_frames(presentation: f64, skip_until: Option<f64>) -> bool {
+    skip_until.is_some_and(|target| presentation < target - FULL_DECODE_MARGIN_SECONDS)
+}
+
 fn next_step(shared: &Shared, skipping: bool) -> (Step, (u32, u32)) {
     let mut state = shared.lock();
     loop {
@@ -238,6 +243,7 @@ fn decode_loop(shared: &Shared, path: &Path) {
                 if source.seek_seconds(request.seconds).is_err() {
                     skip_until = None;
                 }
+                source.discard_non_reference_frames(skip_until.is_some());
                 last_presentation = request.seconds;
             }
             Step::Decode => {}
@@ -249,6 +255,10 @@ fn decode_loop(shared: &Shared, path: &Path) {
                     .seconds_of(&decoded)
                     .unwrap_or(last_presentation + frame_duration);
                 last_presentation = presentation;
+                source.discard_non_reference_frames(discards_non_reference_frames(
+                    presentation,
+                    skip_until,
+                ));
                 let reached =
                     skip_until.is_none_or(|target| presentation + frame_duration * 0.5 >= target);
                 let show = reached || preview_pending;
@@ -306,7 +316,14 @@ fn decode_loop(shared: &Shared, path: &Path) {
 
 #[cfg(test)]
 mod tests {
-    use super::keeps_frame;
+    use super::{discards_non_reference_frames, keeps_frame};
+
+    #[test]
+    fn non_reference_frames_are_discarded_only_far_before_the_target() {
+        assert!(discards_non_reference_frames(1.0, Some(10.0)));
+        assert!(!discards_non_reference_frames(9.6, Some(10.0)));
+        assert!(!discards_non_reference_frames(1.0, None));
+    }
 
     #[test]
     fn stale_scrub_frame_is_kept_and_stale_exact_frame_is_dropped() {

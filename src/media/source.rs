@@ -92,6 +92,17 @@ impl VideoSource {
         Ok(())
     }
 
+    pub fn discard_non_reference_frames(&mut self, discard: bool) {
+        let policy = if discard {
+            ffmpeg::ffi::AVDiscard::AVDISCARD_NONREF
+        } else {
+            ffmpeg::ffi::AVDiscard::AVDISCARD_DEFAULT
+        };
+        unsafe {
+            (*self.decoder.as_mut_ptr()).skip_frame = policy;
+        }
+    }
+
     pub fn seconds_of(&self, frame: &frame::Video) -> Option<f64> {
         frame.pts().map(|pts| {
             pts as f64 * f64::from(self.time_base.numerator())
