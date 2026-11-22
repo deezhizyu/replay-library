@@ -12,6 +12,9 @@ pub struct TextField {
     text: String,
     placeholder: SharedString,
     numeric_only: bool,
+    maximum_length: Option<usize>,
+    inherit_text_size: bool,
+    centered: bool,
     focus_handle: FocusHandle,
 }
 
@@ -33,8 +36,26 @@ impl TextField {
             text: String::new(),
             placeholder: placeholder.into(),
             numeric_only,
+            maximum_length: None,
+            inherit_text_size: false,
+            centered: false,
             focus_handle: cx.focus_handle(),
         }
+    }
+
+    pub fn with_maximum_length(mut self, maximum_length: usize) -> Self {
+        self.maximum_length = Some(maximum_length);
+        self
+    }
+
+    pub fn inheriting_text_size(mut self) -> Self {
+        self.inherit_text_size = true;
+        self
+    }
+
+    pub fn centered(mut self) -> Self {
+        self.centered = true;
+        self
     }
 
     pub fn text(&self) -> &str {
@@ -77,10 +98,18 @@ impl TextField {
 
     fn insert(&mut self, typed: &str) {
         let numeric_only = self.numeric_only;
-        self.text.extend(typed.chars().filter(|character| {
-            !character.is_control()
-                && (!numeric_only || character.is_ascii_digit() || *character == '.')
-        }));
+        let remaining = self.maximum_length.map_or(usize::MAX, |maximum| {
+            maximum.saturating_sub(self.text.chars().count())
+        });
+        self.text.extend(
+            typed
+                .chars()
+                .filter(|character| {
+                    !character.is_control()
+                        && (!numeric_only || character.is_ascii_digit() || *character == '.')
+                })
+                .take(remaining),
+        );
     }
 }
 
@@ -103,7 +132,8 @@ impl Render for TextField {
             .h_full()
             .w_full()
             .overflow_hidden()
-            .text_size(px(14.0))
+            .when(!self.inherit_text_size, |this| this.text_size(px(14.0)))
+            .when(self.centered, |this| this.justify_center())
             .child(
                 div()
                     .when(showing_placeholder, |this| {
@@ -116,7 +146,14 @@ impl Render for TextField {
                     }),
             )
             .when(focused, |this| {
-                this.child(div().w(px(1.0)).h(px(16.0)).ml(px(1.0)).bg(theme::accent()))
+                this.child(
+                    div()
+                        .w(px(1.0))
+                        .when(self.inherit_text_size, |caret| caret.h(gpui::relative(0.7)))
+                        .when(!self.inherit_text_size, |caret| caret.h(px(16.0)))
+                        .ml(px(1.0))
+                        .bg(theme::accent()),
+                )
             })
     }
 }

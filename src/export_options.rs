@@ -136,8 +136,9 @@ const RESOLUTION_LADDER: [u32; 4] = [1440, 1080, 720, 480];
 const FRAME_RATE_LADDER: [u32; 2] = [30, 24];
 const FALLBACK_AUDIO_KBPS: u32 = 128;
 const AUDIO_BITRATE_STEPS: [u32; 9] = [32, 48, 64, 96, 128, 160, 192, 256, 320];
-const MINIMUM_VIDEO_KBPS: u32 = 300;
-const MAXIMUM_VIDEO_KBPS: u32 = 120_000;
+pub const MINIMUM_VIDEO_KBPS: u32 = 300;
+pub const MAXIMUM_VIDEO_KBPS: u32 = 120_000;
+pub const MAXIMUM_AUDIO_KBPS: u32 = 512;
 
 pub fn available_heights(source: SourceFormat) -> Vec<u32> {
     let mut heights = vec![source.height];

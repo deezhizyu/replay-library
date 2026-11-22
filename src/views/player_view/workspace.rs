@@ -65,7 +65,7 @@ impl PlayerView {
                             .flex_1()
                             .min_h_0()
                             .overflow_y_scroll()
-                            .child(panel_body),
+                            .child(div().pb_2().child(panel_body)),
                     )
                     .child(
                         div()

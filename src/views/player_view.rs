@@ -23,7 +23,10 @@ use crate::components::slider::slider;
 use crate::components::text_field::{TextChanged, TextField};
 use crate::components::timeline::{TIMELINE_HEIGHT, TimelineMarks, preview_left, timeline};
 use crate::compress_plan::CompressTarget;
-use crate::export_options::{ExportOptions, SourceFormat, SourceStreams};
+use crate::export_options::{
+    ExportOptions, MAXIMUM_AUDIO_KBPS, MAXIMUM_VIDEO_KBPS, MINIMUM_VIDEO_KBPS, SourceFormat,
+    SourceStreams,
+};
 use crate::format::format_timecode;
 use crate::library::{Clip, ClipInfo, nominal_frame_rate, taken_label};
 use crate::local_time::Date;
@@ -36,6 +39,12 @@ use crate::transcode::{EncoderCatalog, Encoders, JobHandle};
 use crate::trim_selection::TrimSelection;
 
 const DEFAULT_VOLUME: f32 = 0.8;
+const MAXIMUM_MEGABYTES: u32 = 10_000;
+const MAXIMUM_MEGABYTES_DIGITS: usize = 5;
+const MAXIMUM_HEIGHT_DIGITS: usize = 4;
+const MAXIMUM_FRAME_RATE_DIGITS: usize = 3;
+const MAXIMUM_VIDEO_BITRATE_LENGTH: usize = 6;
+const MAXIMUM_AUDIO_BITRATE_DIGITS: usize = 3;
 const HOVER_PREVIEW_WIDTH: f32 = 192.0;
 const SPEEDS: [f64; 5] = [0.25, 0.5, 1.0, 1.5, 2.0];
 const SEEK_STEP_SECONDS: f64 = 5.0;
@@ -153,16 +162,35 @@ impl PlayerView {
             frame_rate: info.frame_rate,
         };
         let streams = SourceStreams::from_info(&info, source);
-        let custom_megabytes = cx.new(|cx| TextField::new("12", true, cx));
-        let custom_height_field = cx.new(|cx| TextField::new("Height", true, cx));
-        let custom_frame_rate_field = cx.new(|cx| TextField::new("fps", true, cx));
-        let video_bitrate_field = cx.new(|cx| TextField::new("Mbps", true, cx));
-        let audio_bitrate_field = cx.new(|cx| TextField::new("kbps", true, cx));
+        let custom_megabytes = cx.new(|cx| {
+            TextField::new("12", true, cx)
+                .with_maximum_length(MAXIMUM_MEGABYTES_DIGITS)
+                .inheriting_text_size()
+        });
+        let custom_height_field = cx.new(|cx| {
+            TextField::new("0", true, cx)
+                .with_maximum_length(MAXIMUM_HEIGHT_DIGITS)
+                .inheriting_text_size()
+                .centered()
+        });
+        let custom_frame_rate_field = cx.new(|cx| {
+            TextField::new("0", true, cx)
+                .with_maximum_length(MAXIMUM_FRAME_RATE_DIGITS)
+                .inheriting_text_size()
+                .centered()
+        });
+        let video_bitrate_field = cx.new(|cx| {
+            TextField::new("Mbps", true, cx).with_maximum_length(MAXIMUM_VIDEO_BITRATE_LENGTH)
+        });
+        let audio_bitrate_field = cx.new(|cx| {
+            TextField::new("kbps", true, cx).with_maximum_length(MAXIMUM_AUDIO_BITRATE_DIGITS)
+        });
         cx.subscribe(
             &custom_megabytes,
             |this, _, TextChanged(text): &TextChanged, cx| {
                 if let Ok(megabytes) = text.parse::<u32>() {
-                    this.compress_target = CompressTarget::Custom(megabytes.clamp(1, 10_000));
+                    this.compress_target =
+                        CompressTarget::Custom(megabytes.clamp(1, MAXIMUM_MEGABYTES));
                     cx.notify();
                 }
             },
@@ -195,7 +223,8 @@ impl PlayerView {
             &video_bitrate_field,
             |this, _, TextChanged(text): &TextChanged, cx| {
                 if let Ok(megabits) = text.parse::<f32>() {
-                    this.export_options.video_kbps = ((megabits * 1000.0) as u32).max(100);
+                    this.export_options.video_kbps =
+                        ((megabits * 1000.0) as u32).clamp(MINIMUM_VIDEO_KBPS, MAXIMUM_VIDEO_KBPS);
                     this.export_options.video_kbps_edited = true;
                     cx.notify();
                 }
@@ -206,7 +235,7 @@ impl PlayerView {
             &audio_bitrate_field,
             |this, _, TextChanged(text): &TextChanged, cx| {
                 if let Ok(kbps) = text.parse::<u32>() {
-                    this.export_options.audio_kbps = kbps.clamp(32, 512);
+                    this.export_options.audio_kbps = kbps.clamp(32, MAXIMUM_AUDIO_KBPS);
                     cx.notify();
                 }
             },

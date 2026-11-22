@@ -86,6 +86,12 @@ impl PlayerView {
             )
         };
         let custom_selected = matches!(target, CompressTarget::Custom(_));
+        let digits = self.custom_megabytes.read(cx).text().chars().count().max(2);
+        let megabytes_font_size = match digits {
+            0..=3 => 24.0,
+            4 => 20.0,
+            _ => 16.0,
+        };
         div()
             .flex()
             .flex_col()
@@ -128,42 +134,39 @@ impl PlayerView {
                                 this.border_color(theme::border()).bg(theme::surface())
                             })
                             .on_click(cx.listener(|this, _, window, cx| {
-                                let megabytes = this
-                                    .custom_megabytes
-                                    .read(cx)
-                                    .text()
-                                    .parse::<u32>()
-                                    .unwrap_or(12)
-                                    .clamp(1, 10_000);
-                                this.compress_target = CompressTarget::Custom(megabytes);
-                                this.custom_megabytes.update(cx, |field, cx| {
-                                    field.set_text(megabytes.to_string(), cx);
-                                    field.focus(window);
-                                });
+                                if !matches!(this.compress_target, CompressTarget::Custom(_)) {
+                                    let megabytes = this
+                                        .custom_megabytes
+                                        .read(cx)
+                                        .text()
+                                        .parse::<u32>()
+                                        .unwrap_or(12)
+                                        .clamp(1, MAXIMUM_MEGABYTES);
+                                    this.compress_target = CompressTarget::Custom(megabytes);
+                                    this.custom_megabytes.update(cx, |field, cx| {
+                                        field.set_text(megabytes.to_string(), cx)
+                                    });
+                                }
+                                this.custom_megabytes.read(cx).focus(window);
                                 cx.notify();
                             }))
                             .child(radio_dot(custom_selected))
                             .child(
                                 div()
-                                    .w(px(84.0))
+                                    .min_w(px(84.0))
                                     .flex()
                                     .items_center()
-                                    .gap_1()
+                                    .gap_2()
                                     .font_family(theme::MONO_FONT)
-                                    .text_size(px(24.0))
+                                    .text_size(px(megabytes_font_size))
                                     .font_weight(FontWeight::MEDIUM)
                                     .child(
                                         div()
-                                            .w(px(48.0))
-                                            .h(px(32.0))
+                                            .w(px(megabytes_font_size * 0.62 * digits as f32 + 6.0))
+                                            .h(px(megabytes_font_size * 1.35))
                                             .child(self.custom_megabytes.clone()),
                                     )
-                                    .child(
-                                        div()
-                                            .text_size(px(14.0))
-                                            .text_color(theme::text_muted())
-                                            .child("MB"),
-                                    ),
+                                    .child("MB"),
                             )
                             .child(
                                 div()
