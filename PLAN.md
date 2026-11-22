@@ -78,7 +78,7 @@ src/components/          titlebar, button, segmented, radio_card, toggle, slider
 
 ## CI (adapted from blink-reminder)
 - `ci.yml`: `windows-latest`, download the pinned FFmpeg LGPL build (checksum-verified) to `third_party/ffmpeg`, LLVM is preinstalled on the runner, then `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`. Same `Swatinem/rust-cache` pin and cache rules.
-- `release.yml`: tag `vX.Y.Z` = `Cargo.toml` version → build release → zip `replay-library.exe` + FFmpeg DLLs + `ffmpeg.exe` + FFmpeg LICENSE → SHA256 → GitHub release.
+- `release` job in `ci.yml` (tags only, after `check`): tag `vX.Y.Z` = `Cargo.toml` version → build release → zip `replay-library.exe` + FFmpeg DLLs + `ffmpeg.exe` + FFmpeg LICENSE → SHA256 → GitHub release.
 - FFmpeg download step in one shared script (`scripts/fetch-ffmpeg.ps1`) used locally and in both workflows.
 
 ## Skipped (not asked)
