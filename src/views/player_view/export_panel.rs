@@ -131,6 +131,8 @@ impl PlayerView {
         let custom_height = self.custom_height;
         let custom_frame_rate = self.custom_frame_rate;
         let height_digits = self.custom_height_field.read(cx).text().chars().count();
+        let video_digits = self.video_bitrate_field.read(cx).text().chars().count();
+        let audio_digits = self.audio_bitrate_field.read(cx).text().chars().count();
         let rate_digits = self.custom_frame_rate_field.read(cx).text().chars().count();
         div()
             .flex()
@@ -303,20 +305,36 @@ impl PlayerView {
                 div()
                     .flex()
                     .gap_3()
-                    .child(field_tile(
+                    .child(bitrate_input(
                         "Video bitrate",
-                        format!("{:.1}", f64::from(self.streams.video_kbps) / 1000.0),
-                        "Mbps",
+                        format!("source {:.1}", f64::from(self.streams.video_kbps) / 1000.0),
                         self.video_bitrate_field.clone(),
+                        " Mbps",
+                        video_digits,
                     ))
-                    .child(field_tile(
+                    .child(bitrate_input(
                         "Audio bitrate",
-                        self.streams.audio_kbps.to_string(),
-                        "kbps",
+                        format!("source {}", self.streams.audio_kbps),
                         self.audio_bitrate_field.clone(),
+                        " kbps",
+                        audio_digits,
                     )),
             )
     }
+}
+
+fn bitrate_input(
+    label: &'static str,
+    source: String,
+    field: Entity<TextField>,
+    suffix: &'static str,
+    digits: usize,
+) -> impl IntoElement {
+    div()
+        .flex_1()
+        .min_w_0()
+        .child(section_title(label, Some(source)))
+        .child(custom_input_chip(field, digits, suffix))
 }
 
 fn custom_input_chip(
@@ -345,51 +363,4 @@ fn custom_input_chip(
                 .child(field),
         )
         .child(suffix)
-}
-
-fn field_tile(
-    label: &'static str,
-    source: String,
-    unit: &'static str,
-    field: Entity<TextField>,
-) -> impl IntoElement {
-    div()
-        .flex_1()
-        .h(px(60.0))
-        .px_3()
-        .flex()
-        .flex_col()
-        .justify_center()
-        .rounded(px(10.0))
-        .border_1()
-        .border_color(theme::border())
-        .bg(theme::surface())
-        .child(
-            div()
-                .flex()
-                .items_baseline()
-                .gap_2()
-                .text_size(px(11.0))
-                .child(div().text_color(theme::text_muted()).child(label))
-                .child(
-                    div()
-                        .text_color(theme::text_dim())
-                        .child(SharedString::from(format!("(source {source})"))),
-                ),
-        )
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap_2()
-                .font_family(theme::MONO_FONT)
-                .font_weight(FontWeight::MEDIUM)
-                .child(div().flex_1().h(px(22.0)).child(field))
-                .child(
-                    div()
-                        .text_size(px(11.0))
-                        .text_color(theme::text_dim())
-                        .child(unit),
-                ),
-        )
 }

@@ -180,10 +180,16 @@ impl PlayerView {
                 .centered()
         });
         let video_bitrate_field = cx.new(|cx| {
-            TextField::new("Mbps", true, cx).with_maximum_length(MAXIMUM_VIDEO_BITRATE_LENGTH)
+            TextField::new("Mbps", true, cx)
+                .with_maximum_length(MAXIMUM_VIDEO_BITRATE_LENGTH)
+                .inheriting_text_size()
+                .centered()
         });
         let audio_bitrate_field = cx.new(|cx| {
-            TextField::new("kbps", true, cx).with_maximum_length(MAXIMUM_AUDIO_BITRATE_DIGITS)
+            TextField::new("kbps", true, cx)
+                .with_maximum_length(MAXIMUM_AUDIO_BITRATE_DIGITS)
+                .inheriting_text_size()
+                .centered()
         });
         cx.subscribe(
             &custom_megabytes,
