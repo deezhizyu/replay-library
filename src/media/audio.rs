@@ -38,6 +38,24 @@ struct Shared {
 }
 
 impl Shared {
+    fn new() -> Self {
+        Self {
+            ring: Mutex::new(Ring {
+                samples: VecDeque::new(),
+                base_seconds: 0.0,
+                consumed_samples: 0,
+                generation: 0,
+                seek: Some((0.0, 0)),
+                quit: false,
+            }),
+            wake: Condvar::new(),
+            playing: AtomicBool::new(false),
+            enabled: AtomicBool::new(true),
+            volume_bits: AtomicU32::new(0.8f32.to_bits()),
+            sample_rate: AtomicU32::new(0),
+        }
+    }
+
     fn ring(&self) -> MutexGuard<'_, Ring> {
         self.ring
             .lock()
@@ -52,21 +70,7 @@ pub struct AudioPlayer {
 
 impl AudioPlayer {
     pub fn open(path: PathBuf) -> Self {
-        let shared = Arc::new(Shared {
-            ring: Mutex::new(Ring {
-                samples: VecDeque::new(),
-                base_seconds: 0.0,
-                consumed_samples: 0,
-                generation: 0,
-                seek: Some((0.0, 0)),
-                quit: false,
-            }),
-            wake: Condvar::new(),
-            playing: AtomicBool::new(false),
-            enabled: AtomicBool::new(true),
-            volume_bits: AtomicU32::new(0.8f32.to_bits()),
-            sample_rate: AtomicU32::new(0),
-        });
+        let shared = Arc::new(Shared::new());
         let worker = thread::spawn({
             let shared = shared.clone();
             move || {
@@ -106,7 +110,7 @@ impl AudioPlayer {
     pub fn position(&self) -> Option<f64> {
         let rate = self.shared.sample_rate.load(Ordering::SeqCst);
         let ring = self.shared.ring();
-        (rate > 0 && ring.consumed_samples > 0).then(|| {
+        (rate > 0 && ring.consumed_samples > 0 && !ring.samples.is_empty()).then(|| {
             ring.base_seconds
                 + ring.consumed_samples as f64 / (f64::from(rate) * OUTPUT_CHANNELS as f64)
         })
@@ -269,5 +273,28 @@ fn fill_buffer(shared: &Shared, buffer: &mut [f32], output_channels: usize) {
         for (channel, sample) in frame.iter_mut().enumerate() {
             *sample = if channel == 0 { left } else { right } * volume;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn position_is_none_once_the_audio_ran_out() {
+        let shared = Shared::new();
+        shared.sample_rate.store(48_000, Ordering::SeqCst);
+        {
+            let mut ring = shared.ring();
+            ring.consumed_samples = 96_000;
+            ring.samples.extend([0.0; 4]);
+        }
+        let audio = AudioPlayer {
+            shared: Arc::new(shared),
+            worker: None,
+        };
+        assert_eq!(audio.position(), Some(1.0));
+        audio.shared.ring().samples.clear();
+        assert_eq!(audio.position(), None);
     }
 }
