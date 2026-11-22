@@ -554,9 +554,25 @@ impl PlayerView {
                             .flex_col()
                             .child(
                                 div()
-                                    .text_size(px(15.0))
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .child(SharedString::from(self.clip.title.clone())),
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .child(
+                                        div()
+                                            .text_size(px(15.0))
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .child(SharedString::from(self.clip.title.clone())),
+                                    )
+                                    .child(icon_button("open-file", "file", 28.0).on_click({
+                                        let path = self.clip.path.clone();
+                                        move |_, _, cx| cx.open_with_system(&path)
+                                    }))
+                                    .child(icon_button("show-in-folder", "folder", 28.0).on_click(
+                                        {
+                                            let path = self.clip.path.clone();
+                                            move |_, _, cx| cx.reveal_path(&path)
+                                        },
+                                    )),
                             )
                             .child(
                                 div()
@@ -564,15 +580,7 @@ impl PlayerView {
                                     .text_color(theme::text_muted())
                                     .child(self.subtitle.clone()),
                             ),
-                    )
-                    .child(icon_button("open-file", "file", 32.0).on_click({
-                        let path = self.clip.path.clone();
-                        move |_, _, cx| cx.open_with_system(&path)
-                    }))
-                    .child(icon_button("show-in-folder", "folder", 32.0).on_click({
-                        let path = self.clip.path.clone();
-                        move |_, _, cx| cx.reveal_path(&path)
-                    })),
+                    ),
             )
             .child(
                 div()

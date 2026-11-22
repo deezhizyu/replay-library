@@ -61,5 +61,5 @@ pub fn icon_button(id: impl Into<ElementId>, icon_name: &'static str, size: f32)
         .rounded_full()
         .cursor_pointer()
         .hover(|style| style.bg(theme::surface_hover()))
-        .child(icon(icon_name, 18.0, theme::text()))
+        .child(icon(icon_name, size / 2.0, theme::text()))
 }
