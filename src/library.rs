@@ -110,13 +110,31 @@ fn scan_directory(directory: &Path, seen: &mut HashSet<PathBuf>, clips: &mut Vec
             continue;
         };
         if metadata.is_dir() {
-            if metadata.file_attributes() & FILE_ATTRIBUTE_HIDDEN == 0 {
+            if !is_hidden(&metadata) {
                 scan_directory(&path, seen, clips);
             }
         } else if metadata.len() > 0 && is_video(&path) && seen.insert(path.clone()) {
             clips.push(clip_from_file(path, &metadata));
         }
     }
+}
+
+fn is_hidden(metadata: &fs::Metadata) -> bool {
+    metadata.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0
+}
+
+pub fn is_listed_clip(path: &Path, roots: &[PathBuf]) -> bool {
+    is_video(path)
+        && roots.iter().any(|root| {
+            path.starts_with(root)
+                && !path
+                    .ancestors()
+                    .skip(1)
+                    .take_while(|ancestor| *ancestor != root.as_path())
+                    .any(|ancestor| {
+                        fs::metadata(ancestor).is_ok_and(|metadata| is_hidden(&metadata))
+                    })
+        })
 }
 
 fn is_video(path: &Path) -> bool {
@@ -331,9 +349,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn scan_skips_hidden_directories() {
-        let root = std::env::temp_dir().join(format!("replay-scan-{}", std::process::id()));
+    fn folder_with_hidden_cache(name: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("{name}-{}", std::process::id()));
         let hidden = root.join("cache");
         fs::create_dir_all(&hidden).unwrap();
         fs::write(root.join("clip.mp4"), b"x").unwrap();
@@ -344,6 +361,26 @@ mod tests {
             .status()
             .unwrap();
         assert!(attributes.success());
+        root
+    }
+
+    #[test]
+    fn only_clips_outside_hidden_directories_are_listed() {
+        let root = folder_with_hidden_cache("replay-listed");
+        let roots = [root.clone()];
+        let listed = (
+            is_listed_clip(&root.join("clip.mp4"), &roots),
+            is_listed_clip(&root.join("cache").join("out.mp4"), &roots),
+            is_listed_clip(&root.join("notes.txt"), &roots),
+            is_listed_clip(Path::new("D:/elsewhere/clip.mp4"), &roots),
+        );
+        fs::remove_dir_all(&root).ok();
+        assert_eq!(listed, (true, false, false, false));
+    }
+
+    #[test]
+    fn scan_skips_hidden_directories() {
+        let root = folder_with_hidden_cache("replay-scan");
         let mut clips = Vec::new();
         scan_directory(&root, &mut HashSet::new(), &mut clips);
         fs::remove_dir_all(&root).ok();

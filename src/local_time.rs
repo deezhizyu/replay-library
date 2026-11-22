@@ -32,6 +32,17 @@ pub struct Date {
 }
 
 impl Date {
+    pub fn today() -> Self {
+        LocalDateTime::now().map_or(
+            Self {
+                year: 1970,
+                month: 1,
+                day: 1,
+            },
+            |now| now.date,
+        )
+    }
+
     pub fn days_since_epoch(self) -> i64 {
         let year = i64::from(self.year) - i64::from(self.month <= 2);
         let era = year.div_euclid(400);

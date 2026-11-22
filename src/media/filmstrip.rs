@@ -10,6 +10,7 @@ use gpui::RenderImage;
 use crate::media::convert::{FrameConverter, fit_within};
 use crate::media::render_image::from_bgra;
 use crate::media::source::VideoSource;
+use crate::mutex_ext::MutexExt as _;
 
 pub const PLAYER_TILE_COUNT: usize = 28;
 pub const HOVER_TILE_COUNT: usize = 12;
@@ -22,20 +23,22 @@ pub struct Filmstrip {
 }
 
 impl Filmstrip {
-    pub fn start(path: PathBuf, duration_seconds: f64, tile_count: usize) -> Self {
+    pub fn start(
+        path: PathBuf,
+        duration_seconds: f64,
+        tile_count: usize,
+        open: fn(&Path) -> anyhow::Result<VideoSource>,
+    ) -> Self {
         let tiles = Arc::new(Mutex::new(vec![None; tile_count]));
         thread::spawn({
             let tiles = tiles.clone();
-            move || fill(&path, duration_seconds, &tiles)
+            move || fill(&path, duration_seconds, tiles, open)
         });
         Self { tiles }
     }
 
     pub fn tiles(&self) -> Vec<Option<Arc<RenderImage>>> {
-        self.tiles
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clone()
+        self.tiles.lock_ignoring_poison().clone()
     }
 
     pub fn tile_at(&self, fraction: f64) -> Option<Arc<RenderImage>> {
@@ -51,16 +54,22 @@ impl Filmstrip {
     }
 }
 
-fn fill(path: &Path, duration_seconds: f64, tiles: &Mutex<Vec<Option<Arc<RenderImage>>>>) {
-    let Ok(mut source) = VideoSource::open(path) else {
+fn fill(
+    path: &Path,
+    duration_seconds: f64,
+    tiles: Arc<Mutex<Vec<Option<Arc<RenderImage>>>>>,
+    open: fn(&Path) -> anyhow::Result<VideoSource>,
+) {
+    let Ok(mut source) = open(path) else {
         return;
     };
     let mut converter = FrameConverter::new(Pixel::BGRA, Flags::BILINEAR);
-    let tile_count = tiles
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .len();
+    let tile_count = tiles.lock_ignoring_poison().len();
     for index in 0..tile_count {
+        let nobody_is_waiting = Arc::strong_count(&tiles) == 1;
+        if nobody_is_waiting {
+            return;
+        }
         let position = duration_seconds * (index as f64 + 0.5) / tile_count as f64;
         if source.seek_seconds(position).is_err() {
             continue;
@@ -74,9 +83,7 @@ fn fill(path: &Path, duration_seconds: f64, tiles: &Mutex<Vec<Option<Arc<RenderI
             .convert_packed(&decoded, width, height)
             .and_then(|bytes| from_bgra(width, height, bytes));
         if let Ok(image) = image {
-            tiles
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())[index] = Some(image);
+            tiles.lock_ignoring_poison()[index] = Some(image);
         }
     }
 }

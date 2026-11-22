@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
@@ -9,9 +10,10 @@ use gpui::{Context, Task};
 
 use crate::app_paths;
 use crate::indexer::{IndexJob, Indexer};
-use crate::library::{self, Clip, Group, SortOrder, group_order, visible_order};
-use crate::local_time::{Date, LocalDateTime};
+use crate::library::{self, Clip, Group, SortOrder, group_order, is_listed_clip, visible_order};
+use crate::local_time::Date;
 use crate::media::filmstrip::{Filmstrip, HOVER_TILE_COUNT};
+use crate::media::source::VideoSource;
 use crate::probe_cache::{self, ProbeEntries};
 use crate::settings::FolderConfig;
 
@@ -91,14 +93,7 @@ impl LibraryModel {
             thumbnails_ready: HashSet::new(),
             hover_strips: HashMap::new(),
             indexer: Indexer::start(),
-            today: LocalDateTime::now().map_or(
-                Date {
-                    year: 1970,
-                    month: 1,
-                    day: 1,
-                },
-                |now| now.date,
-            ),
+            today: Date::today(),
             folders: Vec::new(),
             watch_enabled: true,
             watcher: None,
@@ -131,17 +126,26 @@ impl LibraryModel {
             return;
         }
         let (sender, receiver) = channel();
+        let roots: Vec<PathBuf> = self
+            .folders
+            .iter()
+            .filter(|folder| folder.enabled)
+            .map(|folder| folder.path.clone())
+            .collect();
+        let watched_roots = roots.clone();
         let Ok(mut watcher) =
             notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
-                if event.is_ok() {
+                let concerns_a_clip = event
+                    .is_ok_and(|event| event.paths.iter().any(|path| is_listed_clip(path, &roots)));
+                if concerns_a_clip {
                     sender.send(()).ok();
                 }
             })
         else {
             return;
         };
-        for folder in self.folders.iter().filter(|folder| folder.enabled) {
-            watcher.watch(&folder.path, RecursiveMode::Recursive).ok();
+        for root in &watched_roots {
+            watcher.watch(root, RecursiveMode::Recursive).ok();
         }
         self.watcher = Some(watcher);
         self.watch_events = Some(receiver);
@@ -173,6 +177,7 @@ impl LibraryModel {
     fn clear_thumbnail_files(&mut self) {
         fs::remove_dir_all(app_paths::thumbnail_directory()).ok();
         self.thumbnails_ready.clear();
+        self.indexer.forget_all();
     }
 
     pub fn rescan(&mut self, cx: &mut Context<Self>) {
@@ -192,7 +197,9 @@ impl LibraryModel {
 
     fn finish_scan(&mut self, output: ScanOutput, cx: &mut Context<Self>) {
         self.clips = output.clips;
-        self.probes = output.probes;
+        for (id, info) in output.probes {
+            self.probes.entry(id).or_insert(info);
+        }
         self.thumbnails_ready = output.thumbnails_on_disk;
         for clip in &mut self.clips {
             clip.info = self.probes.get(&clip.id).cloned();
@@ -203,6 +210,9 @@ impl LibraryModel {
             .enumerate()
             .map(|(index, clip)| (clip.id.clone(), index))
             .collect();
+        if !self.clips.is_empty() && prune_probes(&mut self.probes, &self.index_by_id) {
+            self.probes_dirty = true;
+        }
         self.scanning = false;
         self.refresh_view();
         self.enqueue_missing();
@@ -221,6 +231,7 @@ impl LibraryModel {
     }
 
     fn refresh_view(&mut self) {
+        self.today = Date::today();
         self.order = visible_order(&self.clips, &self.query, self.sort);
         self.groups = group_order(&self.clips, &self.order, self.sort, self.today);
         self.revision += 1;
@@ -246,10 +257,14 @@ impl LibraryModel {
         {
             self.hover_strips.clear();
         }
-        let strip = self
-            .hover_strips
-            .entry(clip.id.clone())
-            .or_insert_with(|| Filmstrip::start(clip.path.clone(), duration, HOVER_TILE_COUNT));
+        let strip = self.hover_strips.entry(clip.id.clone()).or_insert_with(|| {
+            Filmstrip::start(
+                clip.path.clone(),
+                duration,
+                HOVER_TILE_COUNT,
+                VideoSource::open_single_threaded,
+            )
+        });
         Some(strip.clone())
     }
 
@@ -325,24 +340,90 @@ fn index_job(clip: &Clip) -> IndexJob {
     }
 }
 
+fn prune_probes(probes: &mut ProbeEntries, live: &HashMap<String, usize>) -> bool {
+    let before = probes.len();
+    probes.retain(|id, _| live.contains_key(id));
+    probes.len() != before
+}
+
+fn prune_thumbnails(directory: &Path, live: &HashSet<&str>) -> HashSet<String> {
+    let prune = !live.is_empty();
+    let Ok(entries) = fs::read_dir(directory) else {
+        return HashSet::new();
+    };
+    let mut ready = HashSet::new();
+    for path in entries.flatten().map(|entry| entry.path()) {
+        let Some(stem) = path.file_stem().map(|stem| stem.to_string_lossy()) else {
+            continue;
+        };
+        if path.extension().is_none_or(|extension| extension != "jpg") {
+            continue;
+        }
+        if !prune || live.contains(stem.as_ref()) {
+            ready.insert(stem.into_owned());
+        } else {
+            fs::remove_file(&path).ok();
+        }
+    }
+    ready
+}
+
 fn scan(folders: &[FolderConfig]) -> ScanOutput {
     let clips = library::scan_folders(folders);
-    let thumbnails_on_disk = fs::read_dir(app_paths::thumbnail_directory())
-        .map(|entries| {
-            entries
-                .flatten()
-                .filter_map(|entry| {
-                    entry
-                        .path()
-                        .file_stem()
-                        .map(|stem| stem.to_string_lossy().into_owned())
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+    let live: HashSet<&str> = clips.iter().map(|clip| clip.id.as_str()).collect();
+    let thumbnails_on_disk = prune_thumbnails(&app_paths::thumbnail_directory(), &live);
     ScanOutput {
         clips,
         probes: probe_cache::load(),
         thumbnails_on_disk,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::library::ClipInfo;
+
+    fn info() -> ClipInfo {
+        ClipInfo {
+            width: 1920,
+            height: 1080,
+            frame_rate: 60.0,
+            duration_seconds: 10.0,
+            codec: "HEVC".into(),
+            bitrate: 1,
+        }
+    }
+
+    #[test]
+    fn probes_of_vanished_clips_are_pruned() {
+        let mut probes = ProbeEntries::new();
+        probes.insert("keep".into(), info());
+        probes.insert("gone".into(), info());
+        let live = HashMap::from([("keep".to_string(), 0)]);
+        assert!(prune_probes(&mut probes, &live));
+        assert_eq!(probes.keys().collect::<Vec<_>>(), ["keep"]);
+        assert!(!prune_probes(&mut probes, &live));
+    }
+
+    #[test]
+    fn stale_thumbnails_are_removed_unless_nothing_is_listed() {
+        let directory = std::env::temp_dir().join(format!("replay-thumbs-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        for name in ["a.jpg", "b.jpg", "c.tmp"] {
+            fs::write(directory.join(name), b"x").unwrap();
+        }
+        let unlisted = prune_thumbnails(&directory, &HashSet::new());
+        assert_eq!(unlisted.len(), 2);
+        assert!(directory.join("b.jpg").exists());
+        let ready = prune_thumbnails(&directory, &HashSet::from(["a"]));
+        let survivors = (
+            directory.join("a.jpg").exists(),
+            directory.join("b.jpg").exists(),
+            directory.join("c.tmp").exists(),
+        );
+        fs::remove_dir_all(&directory).ok();
+        assert_eq!(ready, HashSet::from(["a".to_string()]));
+        assert_eq!(survivors, (true, false, true));
     }
 }
