@@ -46,6 +46,7 @@ const AUDIO_DRIFT_CORRECTION: f64 = 0.25;
 
 pub enum PlayerEvent {
     Back,
+    Delete,
     Navigate(isize),
 }
 
@@ -572,6 +573,9 @@ impl PlayerView {
                                             let path = self.clip.path.clone();
                                             move |_, _, cx| cx.reveal_path(&path)
                                         },
+                                    ))
+                                    .child(icon_button("delete-clip", "trash", 28.0).on_click(
+                                        cx.listener(|_, _, _, cx| cx.emit(PlayerEvent::Delete)),
                                     )),
                             )
                             .child(

@@ -1,13 +1,21 @@
+use std::path::Path;
+use std::thread;
+use std::time::Duration;
+
 use gpui::prelude::*;
 use gpui::{Context, Entity, Focusable as _, IntoElement, Render, SharedString, Window, div, px};
 
 use crate::components::titlebar::titlebar;
 use crate::library_model::LibraryModel;
 use crate::media::source::VideoSource;
+use crate::recycle_bin::move_to_recycle_bin;
 use crate::theme;
 use crate::views::library_view::{LibraryEvent, LibraryView};
 use crate::views::player_view::{PlayerEvent, PlayerView};
 use crate::views::settings_view::{SettingsEvent, SettingsView};
+
+const DELETE_ATTEMPTS: u32 = 20;
+const DELETE_RETRY_DELAY: Duration = Duration::from_millis(100);
 
 enum Screen {
     Library,
@@ -57,6 +65,7 @@ impl AppView {
             window,
             |this, _, event: &PlayerEvent, window, cx| match event {
                 PlayerEvent::Back => this.close_player(window, cx),
+                PlayerEvent::Delete => this.delete_clip(window, cx),
                 PlayerEvent::Navigate(direction) => this.navigate(*direction, window, cx),
             },
         )
@@ -85,6 +94,28 @@ impl AppView {
         cx.notify();
     }
 
+    fn delete_clip(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Screen::Player(player) = &self.screen else {
+            return;
+        };
+        let path = player.read(cx).clip().path.clone();
+        self.close_player(window, cx);
+        cx.spawn(async move |this, cx| {
+            let outcome = cx
+                .background_executor()
+                .spawn(async move { move_to_recycle_bin_when_released(&path) })
+                .await;
+            if let Err(error) = outcome {
+                eprintln!("{error:#}");
+            }
+            this.update(cx, |this, cx| {
+                this.library.update(cx, |model, cx| model.rescan(cx))
+            })
+            .ok();
+        })
+        .detach();
+    }
+
     fn navigate(&mut self, direction: isize, window: &mut Window, cx: &mut Context<Self>) {
         let Screen::Player(player) = &self.screen else {
             return;
@@ -104,6 +135,19 @@ impl AppView {
             .and_then(|target| model.order.get(target).copied())
         {
             self.open_clip(clip_index, window, cx);
+        }
+    }
+}
+
+fn move_to_recycle_bin_when_released(path: &Path) -> anyhow::Result<()> {
+    let mut attempts = 0;
+    loop {
+        match move_to_recycle_bin(path) {
+            Err(_) if attempts < DELETE_ATTEMPTS => {
+                attempts += 1;
+                thread::sleep(DELETE_RETRY_DELAY);
+            }
+            outcome => return outcome,
         }
     }
 }

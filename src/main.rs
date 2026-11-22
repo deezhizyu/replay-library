@@ -14,6 +14,7 @@ mod library_model;
 mod local_time;
 mod media;
 mod probe_cache;
+mod recycle_bin;
 mod settings;
 mod theme;
 mod transcode;
