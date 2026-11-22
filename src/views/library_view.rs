@@ -1,8 +1,8 @@
 use gpui::prelude::*;
 use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, FocusHandle, Focusable, FontWeight,
-    IntoElement, ListAlignment, ListState, MouseMoveEvent, ObjectFit, Render, RenderImage,
-    SharedString, Window, actions, deferred, div, img, list, point, px,
+    IntoElement, ListAlignment, ListOffset, ListState, MouseMoveEvent, ObjectFit, Render,
+    RenderImage, SharedString, Window, actions, deferred, div, img, list, point, px,
 };
 
 use crate::components::icon::icon;
@@ -50,6 +50,7 @@ pub struct LibraryView {
     list_state: ListState,
     rows: Vec<Row>,
     rows_key: (u64, usize),
+    reset_scroll: bool,
     card_width: f32,
     sort_menu_open: bool,
     hover: Option<HoverState>,
@@ -68,6 +69,7 @@ impl LibraryView {
     pub fn new(model: Entity<LibraryModel>, cx: &mut Context<Self>) -> Self {
         let search = cx.new(|cx| TextField::new("Search videos", false, cx));
         cx.subscribe(&search, |this, _, TextChanged(query): &TextChanged, cx| {
+            this.reset_scroll = true;
             this.model
                 .update(cx, |model, cx| model.set_query(query.clone(), cx));
         })
@@ -79,6 +81,7 @@ impl LibraryView {
             list_state: ListState::new(0, ListAlignment::Top, px(600.0)),
             rows: Vec::new(),
             rows_key: (u64::MAX, 0),
+            reset_scroll: false,
             card_width: 260.0,
             sort_menu_open: false,
             hover: None,
@@ -140,7 +143,14 @@ impl LibraryView {
                 self.rows.push(Row::Cards(chunk.to_vec()));
             }
         }
+        let scroll_top = self.list_state.logical_scroll_top();
         self.list_state.reset(self.rows.len());
+        if !std::mem::take(&mut self.reset_scroll) {
+            self.list_state.scroll_to(ListOffset {
+                item_ix: scroll_top.item_ix.min(self.rows.len().saturating_sub(1)),
+                ..scroll_top
+            });
+        }
         self.rows_key = (model.revision, columns);
     }
 
@@ -514,6 +524,7 @@ impl LibraryView {
                     .when(order == current, |this| this.text_color(theme::accent()))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.sort_menu_open = false;
+                        this.reset_scroll = true;
                         this.model.update(cx, |model, cx| model.set_sort(order, cx));
                     }))
                     .child(order.label())
