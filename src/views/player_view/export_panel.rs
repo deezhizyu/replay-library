@@ -274,7 +274,6 @@ impl PlayerView {
                                     move |this, _, _, cx| {
                                         if available {
                                             this.export_options.codec = codec;
-                                            this.export_options.video_kbps_edited = false;
                                             this.sync_bitrate_fields(cx);
                                             cx.notify();
                                         }
