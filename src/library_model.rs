@@ -20,7 +20,7 @@ use crate::settings::FolderConfig;
 const POLL_INTERVAL: Duration = Duration::from_millis(80);
 const PROBE_SAVE_INTERVAL: Duration = Duration::from_secs(3);
 const MAXIMUM_HOVER_STRIPS: usize = 24;
-const RESCAN_QUIET_PERIOD: Duration = Duration::from_millis(2_500);
+const RESCAN_QUIET_PERIOD: Duration = Duration::from_millis(1_000);
 
 struct ScanOutput {
     clips: Vec<Clip>,
@@ -196,6 +196,16 @@ impl LibraryModel {
     }
 
     fn finish_scan(&mut self, output: ScanOutput, cx: &mut Context<Self>) {
+        let arrived: Vec<IndexJob> = if self.index_by_id.is_empty() {
+            Vec::new()
+        } else {
+            output
+                .clips
+                .iter()
+                .filter(|clip| is_unseen(&self.index_by_id, &clip.id))
+                .map(index_job)
+                .collect()
+        };
         self.clips = output.clips;
         for (id, info) in output.probes {
             self.probes.entry(id).or_insert(info);
@@ -216,6 +226,9 @@ impl LibraryModel {
         self.scanning = false;
         self.refresh_view();
         self.enqueue_missing();
+        for job in arrived {
+            self.indexer.prioritize(job);
+        }
         cx.notify();
     }
 
@@ -332,6 +345,10 @@ impl LibraryModel {
     }
 }
 
+fn is_unseen(known: &HashMap<String, usize>, id: &str) -> bool {
+    !known.contains_key(id)
+}
+
 fn index_job(clip: &Clip) -> IndexJob {
     IndexJob {
         cache_id: clip.id.clone(),
@@ -393,6 +410,13 @@ mod tests {
             codec: "HEVC".into(),
             bitrate: 1,
         }
+    }
+
+    #[test]
+    fn only_ids_missing_from_the_previous_scan_are_unseen() {
+        let known = HashMap::from([("old".to_string(), 0)]);
+        assert!(!is_unseen(&known, "old"));
+        assert!(is_unseen(&known, "new"));
     }
 
     #[test]
