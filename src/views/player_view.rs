@@ -21,7 +21,7 @@ use crate::components::icon::icon;
 use crate::components::pointer_surface::PointerPhase;
 use crate::components::slider::slider;
 use crate::components::text_field::{TextChanged, TextField};
-use crate::components::timeline::{TIMELINE_HEIGHT, TimelineMarks, timeline};
+use crate::components::timeline::{TIMELINE_HEIGHT, TimelineMarks, preview_left, timeline};
 use crate::compress_plan::CompressTarget;
 use crate::export_options::{ExportOptions, SourceFormat};
 use crate::format::format_timecode;
@@ -34,6 +34,7 @@ use crate::theme;
 use crate::transcode::{EncoderCatalog, Encoders, JobHandle};
 use crate::trim_selection::TrimSelection;
 
+const HOVER_PREVIEW_WIDTH: f32 = 192.0;
 const SPEEDS: [f64; 5] = [0.25, 0.5, 1.0, 1.5, 2.0];
 const SEEK_STEP_SECONDS: f64 = 5.0;
 const TARGET_RESIZE_THRESHOLD: f32 = 16.0;
@@ -84,6 +85,7 @@ pub struct PlayerView {
     volume: f32,
     muted: bool,
     hover_fraction: Option<f32>,
+    timeline_width: f32,
     scrubbing: bool,
     resume_after_scrub: bool,
     awaiting_frame: bool,
@@ -191,6 +193,7 @@ impl PlayerView {
             volume: 0.8,
             muted: false,
             hover_fraction: None,
+            timeline_width: 0.0,
             scrubbing: false,
             resume_after_scrub: false,
             awaiting_frame: true,
@@ -298,6 +301,7 @@ impl PlayerView {
 
     fn pointer_on_timeline(&mut self, phase: PointerPhase, fraction: f32, width: f32) {
         let seconds = f64::from(fraction) * self.info.duration_seconds;
+        self.timeline_width = width;
         match phase {
             PointerPhase::Hover => self.hover_fraction = Some(fraction),
             PointerPhase::Leave => self.hover_fraction = None,
@@ -455,8 +459,6 @@ impl PlayerView {
             "f" => window.toggle_fullscreen(),
             "m" => self.muted = !self.muted,
             "d" => self.debug = !self.debug,
-            "i" if self.mode == Mode::Trim => self.selection.set_start(self.position()),
-            "o" if self.mode == Mode::Trim => self.selection.set_end(self.position()),
             "escape" if self.job.is_some() => {}
             "escape" if self.mode != Mode::Watch => self.enter_mode(Mode::Watch, cx),
             "escape" => cx.emit(PlayerEvent::Back),
@@ -542,11 +544,10 @@ impl PlayerView {
                     .flex()
                     .items_center()
                     .gap_3()
-                    .child(back_pill(
-                        "back-to-library",
-                        "Library",
-                        cx.listener(|_, _, _, cx| cx.emit(PlayerEvent::Back)),
-                    ))
+                    .child(
+                        icon_button("back-to-library", "arrow-left", 40.0)
+                            .on_click(cx.listener(|_, _, _, cx| cx.emit(PlayerEvent::Back))),
+                    )
                     .child(
                         div()
                             .flex()
@@ -563,7 +564,15 @@ impl PlayerView {
                                     .text_color(theme::text_muted())
                                     .child(self.subtitle.clone()),
                             ),
-                    ),
+                    )
+                    .child(icon_button("open-file", "file", 32.0).on_click({
+                        let path = self.clip.path.clone();
+                        move |_, _, cx| cx.open_with_system(&path)
+                    }))
+                    .child(icon_button("show-in-folder", "folder", 32.0).on_click({
+                        let path = self.clip.path.clone();
+                        move |_, _, cx| cx.reveal_path(&path)
+                    })),
             )
             .child(
                 div()
@@ -572,11 +581,8 @@ impl PlayerView {
                     .flex()
                     .items_center()
                     .rounded(px(8.0))
-                    .bg(gpui::rgba(0x0a0b0dcc))
-                    .border_1()
-                    .border_color(theme::border())
                     .font_family(theme::MONO_FONT)
-                    .text_size(px(11.0))
+                    .text_size(px(12.5))
                     .text_color(theme::text_muted())
                     .child(SharedString::from(self.info.summary())),
             )
@@ -734,9 +740,12 @@ impl PlayerView {
         div()
             .absolute()
             .bottom(px(TIMELINE_HEIGHT + 10.0))
-            .left(gpui::relative(fraction))
-            .ml(px(-96.0))
-            .w(px(192.0))
+            .left(px(preview_left(
+                fraction,
+                self.timeline_width,
+                HOVER_PREVIEW_WIDTH,
+            )))
+            .w(px(HOVER_PREVIEW_WIDTH))
             .flex()
             .flex_col()
             .items_center()

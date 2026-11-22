@@ -124,6 +124,11 @@ fn selection_frame(start: f32, end: f32) -> Div {
         .child(handle(1.0))
 }
 
+pub fn preview_left(fraction: f32, timeline_width: f32, preview_width: f32) -> f32 {
+    (fraction * timeline_width - preview_width / 2.0)
+        .clamp(0.0, (timeline_width - preview_width).max(0.0))
+}
+
 pub fn timeline_ruler(marks: Vec<f64>, duration_seconds: f64) -> impl IntoElement {
     div()
         .relative()
@@ -144,4 +149,17 @@ pub fn timeline_ruler(marks: Vec<f64>, duration_seconds: f64) -> impl IntoElemen
                     seconds % 60
                 )))
         }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::preview_left;
+
+    #[test]
+    fn preview_stays_inside_the_timeline() {
+        assert_eq!(preview_left(0.0, 1000.0, 192.0), 0.0);
+        assert_eq!(preview_left(0.5, 1000.0, 192.0), 404.0);
+        assert_eq!(preview_left(1.0, 1000.0, 192.0), 808.0);
+        assert_eq!(preview_left(0.5, 100.0, 192.0), 0.0);
+    }
 }
