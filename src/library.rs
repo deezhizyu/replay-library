@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::fs;
+use std::os::windows::fs::MetadataExt as _;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -11,6 +12,7 @@ use crate::format::format_size;
 use crate::local_time::{Date, LocalDateTime, days_between};
 use crate::settings::FolderConfig;
 
+const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
 const VIDEO_EXTENSIONS: [&str; 5] = ["mp4", "mkv", "mov", "webm", "avi"];
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -108,7 +110,9 @@ fn scan_directory(directory: &Path, seen: &mut HashSet<PathBuf>, clips: &mut Vec
             continue;
         };
         if metadata.is_dir() {
-            scan_directory(&path, seen, clips);
+            if metadata.file_attributes() & FILE_ATTRIBUTE_HIDDEN == 0 {
+                scan_directory(&path, seen, clips);
+            }
         } else if metadata.len() > 0 && is_video(&path) && seen.insert(path.clone()) {
             clips.push(clip_from_file(path, &metadata));
         }
@@ -325,6 +329,26 @@ mod tests {
             .unwrap(),
             info: None,
         }
+    }
+
+    #[test]
+    fn scan_skips_hidden_directories() {
+        let root = std::env::temp_dir().join(format!("replay-scan-{}", std::process::id()));
+        let hidden = root.join("cache");
+        fs::create_dir_all(&hidden).unwrap();
+        fs::write(root.join("clip.mp4"), b"x").unwrap();
+        fs::write(hidden.join("out.mp4"), b"x").unwrap();
+        let attributes = std::process::Command::new("attrib")
+            .arg("+h")
+            .arg(&hidden)
+            .status()
+            .unwrap();
+        assert!(attributes.success());
+        let mut clips = Vec::new();
+        scan_directory(&root, &mut HashSet::new(), &mut clips);
+        fs::remove_dir_all(&root).ok();
+        assert_eq!(clips.len(), 1);
+        assert_eq!(clips[0].file_name(), "clip.mp4");
     }
 
     const TODAY: Date = Date {
