@@ -292,11 +292,13 @@ impl PlayerView {
                     .gap_3()
                     .child(field_tile(
                         "Video bitrate",
+                        format!("{:.1}", f64::from(self.streams.video_kbps) / 1000.0),
                         "Mbps",
                         self.video_bitrate_field.clone(),
                     ))
                     .child(field_tile(
                         "Audio bitrate",
+                        self.streams.audio_kbps.to_string(),
                         "kbps",
                         self.audio_bitrate_field.clone(),
                     )),
@@ -334,6 +336,7 @@ fn custom_input_chip(
 
 fn field_tile(
     label: &'static str,
+    source: String,
     unit: &'static str,
     field: Entity<TextField>,
 ) -> impl IntoElement {
@@ -350,9 +353,16 @@ fn field_tile(
         .bg(theme::surface())
         .child(
             div()
+                .flex()
+                .items_baseline()
+                .gap_2()
                 .text_size(px(11.0))
-                .text_color(theme::text_muted())
-                .child(label),
+                .child(div().text_color(theme::text_muted()).child(label))
+                .child(
+                    div()
+                        .text_color(theme::text_dim())
+                        .child(SharedString::from(format!("source {source}"))),
+                ),
         )
         .child(
             div()
