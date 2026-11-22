@@ -42,16 +42,24 @@ fn main() -> anyhow::Result<()> {
         if let Err(error) = register_fonts(cx) {
             eprintln!("failed to register fonts: {error:#}");
         }
-        let settings = Settings::load().unwrap_or_else(|| {
-            let first_start = Settings {
-                folders: capture_folders::detect(),
-                ..Settings::default()
-            };
-            if let Err(error) = first_start.save() {
-                eprintln!("failed to save the first-start settings: {error:#}");
+        let detected = || Settings {
+            folders: capture_folders::detect(),
+            ..Settings::default()
+        };
+        let settings = match Settings::load() {
+            Ok(Some(settings)) => settings,
+            Ok(None) => {
+                let first_start = detected();
+                if let Err(error) = first_start.save() {
+                    eprintln!("failed to save the first-start settings: {error:#}");
+                }
+                first_start
             }
-            first_start
-        });
+            Err(error) => {
+                eprintln!("{error:#}");
+                detected()
+            }
+        };
         let folders = settings.folders.clone();
         cx.set_global(settings);
         cx.set_global(transcode::EncoderCatalog::start());

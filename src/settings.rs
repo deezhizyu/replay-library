@@ -1,7 +1,8 @@
 use std::fs;
-use std::path::PathBuf;
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
 
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, Result, anyhow};
 use serde::{Deserialize, Serialize};
 
 use crate::app_paths;
@@ -56,9 +57,27 @@ impl Default for Settings {
 impl gpui::Global for Settings {}
 
 impl Settings {
-    pub fn load() -> Option<Self> {
-        let text = fs::read_to_string(app_paths::settings_file()).ok()?;
-        toml::from_str::<Self>(&text).ok().map(Self::clamped)
+    pub fn load() -> Result<Option<Self>> {
+        Self::load_from(&app_paths::settings_file())
+    }
+
+    fn load_from(file: &Path) -> Result<Option<Self>> {
+        let text = match fs::read_to_string(file) {
+            Ok(text) => text,
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error).context("failed to read the settings"),
+        };
+        match toml::from_str::<Self>(&text) {
+            Ok(settings) => Ok(Some(settings.clamped())),
+            Err(error) => {
+                let backup = file.with_extension("toml.bad");
+                fs::copy(file, &backup).context("failed to back up the unreadable settings")?;
+                Err(anyhow!(
+                    "the settings are invalid ({error}), a copy is kept at {}",
+                    backup.display()
+                ))
+            }
+        }
     }
 
     pub fn save(&self) -> Result<()> {
@@ -96,6 +115,20 @@ mod tests {
         };
         let text = toml::to_string_pretty(&settings).unwrap();
         assert_eq!(toml::from_str::<Settings>(&text).unwrap(), settings);
+    }
+
+    #[test]
+    fn missing_file_is_a_first_start_and_invalid_file_is_kept_as_a_backup() {
+        let directory =
+            std::env::temp_dir().join(format!("replay-settings-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let file = directory.join("settings.toml");
+        assert_eq!(Settings::load_from(&file).unwrap(), None);
+        fs::write(&file, "folders = [oops").unwrap();
+        assert!(Settings::load_from(&file).is_err());
+        let backup = fs::read_to_string(directory.join("settings.toml.bad")).unwrap();
+        fs::remove_dir_all(&directory).ok();
+        assert_eq!(backup, "folders = [oops");
     }
 
     #[test]
