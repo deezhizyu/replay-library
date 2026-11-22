@@ -55,6 +55,8 @@ jobs:
           Copy-Item third_party/ffmpeg/bin/*.dll replay-library
           Copy-Item third_party/ffmpeg/bin/ffmpeg.exe replay-library
           Copy-Item third_party/ffmpeg/LICENSE.txt replay-library
+          Copy-Item LICENSE-MIT, LICENSE-APACHE replay-library
+          Copy-Item assets/fonts/*.txt replay-library
           Compress-Archive -Path replay-library/* -DestinationPath replay-library-windows-x64.zip
           (Get-FileHash replay-library-windows-x64.zip -Algorithm SHA256).Hash.ToLower() + "  replay-library-windows-x64.zip" | Out-File -Encoding ascii replay-library-windows-x64.zip.sha256
       - name: Publish release
