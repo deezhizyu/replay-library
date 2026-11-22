@@ -538,25 +538,11 @@ impl LibraryView {
 
     fn footer(&self, cx: &App) -> impl IntoElement {
         let model = self.model.read(cx);
-        let remaining = model.indexing_remaining();
-        let status = if model.scanning {
-            "Scanning folders".to_string()
-        } else if remaining > 0 {
-            format!("Indexing {} clips", format_count(remaining))
-        } else {
-            "Index up to date · thumbnails cached".to_string()
-        };
-        let status_color = if remaining > 0 || model.scanning {
-            theme::accent()
-        } else {
-            theme::success()
-        };
         div()
             .h(px(30.0))
             .flex_none()
             .flex()
             .items_center()
-            .justify_between()
             .px(px(PAGE_PADDING))
             .border_t_1()
             .border_color(theme::border_subtle())
@@ -568,14 +554,6 @@ impl LibraryView {
                 format_count(model.clips.len()),
                 format_size(model.total_size_bytes())
             ))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .child(div().size(px(6.0)).rounded_full().bg(status_color))
-                    .child(status),
-            )
     }
 }
 

@@ -90,15 +90,6 @@ impl Indexer {
     pub fn drain_results(&self) -> Vec<IndexResult> {
         self.results.try_iter().collect()
     }
-
-    pub fn remaining(&self) -> usize {
-        let queues = self
-            .shared
-            .queues
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        queues.urgent.len() + queues.background.len()
-    }
 }
 
 fn work(shared: &Shared, sender: &Sender<IndexResult>) {

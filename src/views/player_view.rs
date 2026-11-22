@@ -110,6 +110,7 @@ pub struct PlayerView {
     video_bitrate_field: Entity<TextField>,
     audio_bitrate_field: Entity<TextField>,
     job: Option<ActiveJob>,
+    confirming_delete: bool,
 }
 
 impl EventEmitter<PlayerEvent> for PlayerView {}
@@ -216,6 +217,7 @@ impl PlayerView {
             video_bitrate_field,
             audio_bitrate_field,
             job: None,
+            confirming_delete: false,
         };
         view.sync_bitrate_fields(cx);
         view.set_playing(true);
@@ -451,6 +453,13 @@ impl PlayerView {
 
     fn handle_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let keystroke = &event.keystroke;
+        if self.confirming_delete {
+            if keystroke.key == "escape" {
+                self.confirming_delete = false;
+                cx.notify();
+            }
+            return;
+        }
         let shift = keystroke.modifiers.shift;
         match keystroke.key.as_str() {
             "space" | "k" => self.toggle_playing(),
@@ -576,7 +585,10 @@ impl PlayerView {
                                         },
                                     ))
                                     .child(icon_button("delete-clip", "trash", 28.0).on_click(
-                                        cx.listener(|_, _, _, cx| cx.emit(PlayerEvent::Delete)),
+                                        cx.listener(|this, _, _, cx| {
+                                            this.confirming_delete = true;
+                                            cx.notify();
+                                        }),
                                     )),
                             )
                             .child(
@@ -598,6 +610,74 @@ impl PlayerView {
                     .text_size(px(12.5))
                     .text_color(theme::text_muted())
                     .child(SharedString::from(self.info.summary())),
+            )
+    }
+
+    fn delete_dialog(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        div()
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(gpui::rgba(0x000000b8))
+            .occlude()
+            .child(
+                div()
+                    .w(px(420.0))
+                    .p_6()
+                    .flex()
+                    .flex_col()
+                    .gap_4()
+                    .rounded(px(14.0))
+                    .border_1()
+                    .border_color(theme::border_strong())
+                    .bg(theme::surface())
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_size(px(16.0))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child("Delete this clip?"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(13.0))
+                                    .text_color(theme::text_muted())
+                                    .child(SharedString::from(format!(
+                                        "{} will be moved to the Recycle Bin. You can restore it from there.",
+                                        self.clip.file_name()
+                                    ))),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .justify_end()
+                            .gap_2()
+                            .child(
+                                button("cancel-delete", "Cancel", None, ButtonKind::Secondary)
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.confirming_delete = false;
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                button(
+                                    "confirm-delete",
+                                    "Move to Recycle Bin",
+                                    Some("trash"),
+                                    ButtonKind::Primary,
+                                )
+                                .on_click(cx.listener(|_, _, _, cx| cx.emit(PlayerEvent::Delete))),
+                            ),
+                    ),
             )
     }
 
@@ -865,5 +945,6 @@ impl Render for PlayerView {
             .size_full()
             .child(body)
             .children(self.job.as_ref().map(|_| self.export_dialog(cx)))
+            .children(self.confirming_delete.then(|| self.delete_dialog(cx)))
     }
 }
