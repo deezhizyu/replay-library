@@ -11,10 +11,12 @@ use std::time::{Duration, Instant};
 use anyhow::{Context as _, Result, anyhow};
 
 use crate::export_options::{AudioChoice, VideoCodec};
+use crate::mutex_ext::MutexExt as _;
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const OVERSHOOT_SAFETY: f64 = 0.96;
 const MAXIMUM_RATE_HEADROOM: f64 = 1.2;
+const MAXIMUM_PASSES: u32 = 3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Encoder {
@@ -116,17 +118,14 @@ impl EncoderCatalog {
             let slot = slot.clone();
             move || {
                 let detected = detect_encoders();
-                *slot.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(detected);
+                *slot.lock_ignoring_poison() = Some(detected);
             }
         });
         Self(slot)
     }
 
     pub fn encoders(&self) -> Option<Encoders> {
-        *self
-            .0
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+        *self.0.lock_ignoring_poison()
     }
 }
 
@@ -350,8 +349,13 @@ pub fn apply_progress_line(line: &str, snapshot: &mut ProgressSnapshot) -> bool 
     false
 }
 
-pub fn next_pass_bitrate(video_kbps: u32, target_bytes: u64, actual_bytes: u64) -> Option<u32> {
-    (actual_bytes > target_bytes).then(|| {
+pub fn next_pass_bitrate(
+    pass: u32,
+    video_kbps: u32,
+    target_bytes: u64,
+    actual_bytes: u64,
+) -> Option<u32> {
+    (pass < MAXIMUM_PASSES && actual_bytes > target_bytes).then(|| {
         (f64::from(video_kbps) * target_bytes as f64 / actual_bytes as f64 * OVERSHOOT_SAFETY)
             as u32
     })
@@ -374,7 +378,12 @@ pub enum JobPhase {
     Cancelled,
 }
 
+fn partial_path(output: &Path) -> PathBuf {
+    output.with_extension("mp4.part")
+}
+
 pub struct JobHandle {
+    partial: PathBuf,
     phase: Arc<Mutex<JobPhase>>,
     cancelled: Arc<AtomicBool>,
     child: Arc<Mutex<Option<Child>>>,
@@ -382,27 +391,28 @@ pub struct JobHandle {
 
 impl JobHandle {
     pub fn phase(&self) -> JobPhase {
-        self.phase
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clone()
+        self.phase.lock_ignoring_poison().clone()
     }
 
     pub fn cancel(&self) {
         self.cancelled.store(true, Ordering::SeqCst);
-        if let Some(child) = self
-            .child
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .as_mut()
-        {
+        if let Some(mut child) = self.child.lock_ignoring_poison().take() {
             child.kill().ok();
+            child.wait().ok();
         }
+        std::fs::remove_file(&self.partial).ok();
+    }
+}
+
+impl Drop for JobHandle {
+    fn drop(&mut self) {
+        self.cancel();
     }
 }
 
 pub fn start(spec: JobSpec) -> JobHandle {
     let handle = JobHandle {
+        partial: partial_path(&spec.output),
         phase: Arc::new(Mutex::new(JobPhase::Running {
             fraction: 0.0,
             speed: 0.0,
@@ -418,9 +428,7 @@ pub fn start(spec: JobSpec) -> JobHandle {
     let child = handle.child.clone();
     thread::spawn(move || {
         let outcome = run_passes(spec, &phase, &cancelled, &child);
-        let mut phase = phase
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut phase = phase.lock_ignoring_poison();
         *phase = match outcome {
             _ if cancelled.load(Ordering::SeqCst) => JobPhase::Cancelled,
             Ok(done) => done,
@@ -437,7 +445,7 @@ fn run_passes(
     child_slot: &Mutex<Option<Child>>,
 ) -> Result<JobPhase> {
     let started = Instant::now();
-    let partial = spec.output.with_extension("mp4.part");
+    let partial = partial_path(&spec.output);
     let mut pass = 1;
     loop {
         run_ffmpeg(&spec, &partial, phase, cancelled, child_slot, started, pass)?;
@@ -446,8 +454,7 @@ fn run_passes(
             .len();
         let retry = spec
             .target_bytes
-            .and_then(|target| next_pass_bitrate(spec.video_kbps, target, bytes))
-            .filter(|_| pass == 1);
+            .and_then(|target| next_pass_bitrate(pass, spec.video_kbps, target, bytes));
         match retry {
             Some(kbps) if !cancelled.load(Ordering::SeqCst) => {
                 spec.video_kbps = kbps;
@@ -455,6 +462,9 @@ fn run_passes(
             }
             _ => {
                 std::fs::rename(&partial, &spec.output)
+                    .inspect_err(|_| {
+                        std::fs::remove_file(&partial).ok();
+                    })
                     .context("failed to move the finished file into place")?;
                 return Ok(JobPhase::Done {
                     bytes,
@@ -488,9 +498,7 @@ fn run_ffmpeg(
         .stderr
         .take()
         .ok_or_else(|| anyhow!("ffmpeg has no error pipe"))?;
-    *child_slot
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(child);
+    *child_slot.lock_ignoring_poison() = Some(child);
     let error_reader = thread::spawn(move || {
         let mut text = String::new();
         stderr.read_to_string(&mut text).ok();
@@ -505,9 +513,7 @@ fn run_ffmpeg(
             } else {
                 0.0
             };
-            *phase
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner()) = JobPhase::Running {
+            *phase.lock_ignoring_poison() = JobPhase::Running {
                 fraction,
                 speed: snapshot.speed,
                 elapsed_seconds: started.elapsed().as_secs_f64(),
@@ -517,11 +523,13 @@ fn run_ffmpeg(
         }
     }
     let status = loop {
-        let mut slot = child_slot
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut slot = child_slot.lock_ignoring_poison();
         let Some(child) = slot.as_mut() else {
-            return Err(anyhow!("ffmpeg process vanished"));
+            return if cancelled.load(Ordering::SeqCst) {
+                Ok(())
+            } else {
+                Err(anyhow!("ffmpeg process vanished"))
+            };
         };
         if let Some(status) = child.try_wait()? {
             *slot = None;
@@ -629,7 +637,15 @@ mod tests {
 
     #[test]
     fn overshoot_triggers_a_corrected_second_pass() {
-        assert_eq!(next_pass_bitrate(1_000, 8_000_000, 7_900_000), None);
-        assert_eq!(next_pass_bitrate(1_000, 8_000_000, 10_000_000), Some(768));
+        assert_eq!(next_pass_bitrate(1, 1_000, 8_000_000, 7_900_000), None);
+        assert_eq!(
+            next_pass_bitrate(1, 1_000, 8_000_000, 10_000_000),
+            Some(768)
+        );
+        assert_eq!(next_pass_bitrate(2, 768, 8_000_000, 8_400_000), Some(702));
+        assert_eq!(
+            next_pass_bitrate(MAXIMUM_PASSES, 702, 8_000_000, 8_400_000),
+            None
+        );
     }
 }

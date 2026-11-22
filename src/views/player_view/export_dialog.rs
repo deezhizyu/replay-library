@@ -4,7 +4,7 @@ use super::*;
 use crate::components::icon::icon;
 use crate::export_options::scaled_width;
 use crate::format::{format_size, format_timecode};
-use crate::transcode::{self, Encoder, JobPhase, JobSpec};
+use crate::transcode::{self, JobPhase, JobSpec};
 
 impl PlayerView {
     pub(super) fn begin_trim_export(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -167,7 +167,18 @@ impl PlayerView {
                 bytes,
                 took_seconds,
             } => vec![
-                ("Size", format_size(*bytes)),
+                (
+                    "Size",
+                    if compressing && *bytes > self.compress_target.target_bytes() {
+                        format!(
+                            "{} (over {} MB)",
+                            format_size(*bytes),
+                            self.compress_target.megabytes()
+                        )
+                    } else {
+                        format_size(*bytes)
+                    },
+                ),
                 ("Length", format_timecode(self.exported_length())),
                 ("Took", format_timecode(*took_seconds)),
                 ("Format", job.format_label.clone()),
@@ -346,6 +357,3 @@ impl PlayerView {
         }
     }
 }
-
-#[allow(dead_code)]
-fn _encoder_type_check(_: Encoder) {}

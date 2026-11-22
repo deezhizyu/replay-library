@@ -26,10 +26,11 @@ use crate::compress_plan::CompressTarget;
 use crate::export_options::{ExportOptions, SourceFormat};
 use crate::format::format_timecode;
 use crate::library::{Clip, ClipInfo, taken_label};
-use crate::local_time::{Date, LocalDateTime};
+use crate::local_time::Date;
 use crate::media::audio::AudioPlayer;
 use crate::media::filmstrip::{Filmstrip, PLAYER_TILE_COUNT};
 use crate::media::playback::Playback;
+use crate::media::source::VideoSource;
 use crate::theme;
 use crate::transcode::{EncoderCatalog, Encoders, JobHandle};
 use crate::trim_selection::TrimSelection;
@@ -126,16 +127,13 @@ impl PlayerView {
         let target = initial_target(window);
         let playback = Playback::open(clip.path.clone(), info.clone(), target);
         let clip_path = clip.path.clone();
-        let filmstrip =
-            Filmstrip::start(clip.path.clone(), info.duration_seconds, PLAYER_TILE_COUNT);
-        let today = LocalDateTime::now().map_or(
-            Date {
-                year: 1970,
-                month: 1,
-                day: 1,
-            },
-            |now| now.date,
+        let filmstrip = Filmstrip::start(
+            clip.path.clone(),
+            info.duration_seconds,
+            PLAYER_TILE_COUNT,
+            VideoSource::open,
         );
+        let today = Date::today();
         let focus_handle = cx.focus_handle();
         window.focus(&focus_handle);
         let source = SourceFormat {
@@ -221,6 +219,11 @@ impl PlayerView {
         };
         view.sync_bitrate_fields(cx);
         view.set_playing(true);
+        cx.on_app_quit(|this, _| {
+            this.job = None;
+            async {}
+        })
+        .detach();
         view
     }
 
