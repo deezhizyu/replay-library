@@ -252,47 +252,30 @@ impl Render for SettingsView {
         div()
             .size_full()
             .flex()
+            .flex_col()
             .child(
                 div()
-                    .w(px(264.0))
+                    .h(px(64.0))
                     .flex_none()
-                    .h_full()
+                    .px_5()
                     .flex()
-                    .flex_col()
-                    .border_r_1()
-                    .border_color(theme::border_subtle())
+                    .items_center()
                     .child(
-                        div().h(px(64.0)).flex_none().px_5().flex().items_center().child(
-                            icon_button("settings-back", "arrow-left", 40.0)
-                                .on_click(cx.listener(|_, _, _, cx| cx.emit(SettingsEvent::Back))),
-                        ),
-                    )
-                    .child(div().px_3().child(
-                        div()
-                            .h(px(44.0))
-                            .px_3()
-                            .flex()
-                            .items_center()
-                            .gap_3()
-                            .rounded(px(10.0))
-                            .bg(theme::surface_raised())
-                            .text_size(px(14.0))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(icon("folder", 18.0, theme::accent()))
-                            .child("Folders"),
-                    )),
+                        icon_button("settings-back", "arrow-left", 40.0)
+                            .on_click(cx.listener(|_, _, _, cx| cx.emit(SettingsEvent::Back))),
+                    ),
             )
             .child(
                 div()
                     .id("settings-content")
                     .flex_1()
-                    .h_full()
+                    .min_h_0()
                     .overflow_y_scroll()
                     .child(
                         div()
                             .w(px(780.0))
                             .mx_auto()
-                            .pt_10()
+                            .pt_2()
                             .pb_10()
                             .flex()
                             .flex_col()
