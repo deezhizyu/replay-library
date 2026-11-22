@@ -675,7 +675,7 @@ impl PlayerView {
                                 button(
                                     "confirm-delete",
                                     "Move to Recycle Bin",
-                                    Some("trash"),
+                                    None,
                                     ButtonKind::Primary,
                                 )
                                 .on_click(cx.listener(|_, _, _, cx| cx.emit(PlayerEvent::Delete))),
