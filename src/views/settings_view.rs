@@ -99,6 +99,7 @@ impl SettingsView {
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let (count, bytes) = self.library.read(cx).folder_summary(folder);
+        let folder_path = folder.path.clone();
         div()
             .h(px(68.0))
             .px_5()
@@ -109,6 +110,7 @@ impl SettingsView {
             .border_color(theme::border_subtle())
             .child(
                 div()
+                    .id(("folder-open", index))
                     .size(px(36.0))
                     .flex_none()
                     .flex()
@@ -116,6 +118,9 @@ impl SettingsView {
                     .justify_center()
                     .rounded(px(10.0))
                     .bg(theme::surface_raised())
+                    .cursor_pointer()
+                    .hover(|style| style.bg(theme::surface_hover()))
+                    .on_click(move |_, _, cx| cx.open_with_system(&folder_path))
                     .child(icon("folder", 18.0, theme::text())),
             )
             .child(
