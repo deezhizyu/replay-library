@@ -8,6 +8,7 @@ const CUSTOM_CHIP_CHARACTER_WIDTH: f32 = 8.0;
 impl PlayerView {
     pub(super) fn export_panel(
         &self,
+        window: &Window,
         cx: &mut Context<Self>,
     ) -> (impl IntoElement + use<>, impl IntoElement + use<>) {
         let file_size = self.export_tab == ExportTab::FileSize;
@@ -67,7 +68,7 @@ impl PlayerView {
             .child(if file_size {
                 self.file_size_tab(cx).into_any_element()
             } else {
-                self.custom_tab(cx).into_any_element()
+                self.custom_tab(window, cx).into_any_element()
             });
         let footer = div()
             .flex()
@@ -124,7 +125,7 @@ impl PlayerView {
         (body, footer)
     }
 
-    fn custom_tab(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn custom_tab(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let encoders = self.encoders(cx);
         let heights = available_heights(self.source);
         let rates = available_frame_rates(self.source);
@@ -173,6 +174,7 @@ impl PlayerView {
                                     self.custom_height_field.clone(),
                                     height_digits,
                                     "p",
+                                    true,
                                 )
                                 .into_any_element()
                             } else {
@@ -225,6 +227,7 @@ impl PlayerView {
                                     self.custom_frame_rate_field.clone(),
                                     rate_digits,
                                     " fps",
+                                    true,
                                 )
                                 .into_any_element()
                             } else {
@@ -271,6 +274,7 @@ impl PlayerView {
                                     move |this, _, _, cx| {
                                         if available {
                                             this.export_options.codec = codec;
+                                            this.export_options.video_kbps_edited = false;
                                             this.sync_bitrate_fields(cx);
                                             cx.notify();
                                         }
@@ -311,6 +315,7 @@ impl PlayerView {
                         self.video_bitrate_field.clone(),
                         " Mbps",
                         video_digits,
+                        self.video_bitrate_field.read(cx).is_focused(window),
                     ))
                     .child(bitrate_input(
                         "Audio bitrate",
@@ -318,6 +323,7 @@ impl PlayerView {
                         self.audio_bitrate_field.clone(),
                         " kbps",
                         audio_digits,
+                        self.audio_bitrate_field.read(cx).is_focused(window),
                     )),
             )
     }
@@ -329,18 +335,20 @@ fn bitrate_input(
     field: Entity<TextField>,
     suffix: &'static str,
     digits: usize,
+    active: bool,
 ) -> impl IntoElement {
     div()
         .flex_1()
         .min_w_0()
         .child(section_title(label, Some(source)))
-        .child(custom_input_chip(field, digits, suffix))
+        .child(custom_input_chip(field, digits, suffix, active))
 }
 
 fn custom_input_chip(
     field: Entity<TextField>,
     digits: usize,
     suffix: &'static str,
+    active: bool,
 ) -> impl IntoElement {
     div()
         .h(px(44.0))
@@ -350,9 +358,16 @@ fn custom_input_chip(
         .justify_center()
         .rounded(px(10.0))
         .border_1()
-        .border_color(theme::accent())
-        .bg(theme::accent_soft())
-        .text_color(theme::accent())
+        .when(active, |this| {
+            this.border_color(theme::accent())
+                .bg(theme::accent_soft())
+                .text_color(theme::accent())
+        })
+        .when(!active, |this| {
+            this.border_color(theme::border())
+                .bg(theme::surface())
+                .text_color(theme::text())
+        })
         .font_family(theme::MONO_FONT)
         .text_size(px(13.0))
         .font_weight(FontWeight::MEDIUM)

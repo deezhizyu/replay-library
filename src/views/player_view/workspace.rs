@@ -10,7 +10,7 @@ impl PlayerView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let (panel_body, panel_footer) = self.export_panel(cx);
+        let (panel_body, panel_footer) = self.export_panel(window, cx);
         div()
             .size_full()
             .flex()

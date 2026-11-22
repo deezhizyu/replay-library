@@ -254,7 +254,6 @@ fn audio_arguments(spec: &JobSpec) -> Vec<String> {
             "-b:a".into(),
             format!("{}k", spec.audio_kbps),
         ],
-        AudioChoice::CopySource => vec!["-c:a".into(), "copy".into()],
     };
     words
 }
@@ -601,11 +600,10 @@ mod tests {
     }
 
     #[test]
-    fn unchanged_resolution_and_rate_add_no_filter_and_audio_can_be_copied() {
+    fn unchanged_resolution_and_rate_add_no_filter() {
         let mut unchanged = spec();
         unchanged.height = 1440;
         unchanged.frame_rate = 60;
-        unchanged.audio = AudioChoice::CopySource;
         unchanged.codec = VideoCodec::H264;
         unchanged.encoder = Encoder {
             name: "libopenh264",
@@ -614,7 +612,6 @@ mod tests {
         let text = joined(&unchanged);
         assert!(!text.contains("-vf"));
         assert!(!text.contains("hvc1"));
-        assert!(text.contains("-c:a copy"));
         assert!(text.contains("-rc_mode bitrate"));
     }
 

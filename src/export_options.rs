@@ -53,17 +53,15 @@ impl VideoCodec {
 pub enum AudioChoice {
     Aac,
     Opus,
-    CopySource,
 }
 
 impl AudioChoice {
-    pub const ALL: [Self; 3] = [Self::Aac, Self::Opus, Self::CopySource];
+    pub const ALL: [Self; 2] = [Self::Aac, Self::Opus];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Aac => "AAC",
             Self::Opus => "Opus",
-            Self::CopySource => "Copy source",
         }
     }
 
@@ -209,11 +207,7 @@ impl ExportOptions {
 
     pub fn select_audio(&mut self, audio: AudioChoice) {
         self.audio = audio;
-        self.audio_kbps = if audio == AudioChoice::CopySource {
-            self.streams.audio_kbps
-        } else {
-            convert_audio_kbps(self.streams.audio_kbps, self.streams.audio, audio)
-        };
+        self.audio_kbps = convert_audio_kbps(self.streams.audio_kbps, self.streams.audio, audio);
     }
 
     pub fn recompute_bitrate(&mut self, source: SourceFormat) {
@@ -236,12 +230,8 @@ impl ExportOptions {
     }
 
     pub fn estimated_bytes(&self, duration_seconds: f64) -> u64 {
-        let audio_kbps = if self.audio == AudioChoice::CopySource {
-            self.streams.audio_kbps
-        } else {
-            self.audio_kbps
-        };
-        (f64::from(self.video_kbps + audio_kbps) * 1000.0 / 8.0 * duration_seconds.max(0.0)) as u64
+        (f64::from(self.video_kbps + self.audio_kbps) * 1000.0 / 8.0 * duration_seconds.max(0.0))
+            as u64
     }
 }
 
@@ -342,8 +332,6 @@ mod tests {
         options.select_audio(AudioChoice::Opus);
         assert_eq!(options.audio_kbps, 96);
         options.select_audio(AudioChoice::Aac);
-        assert_eq!(options.audio_kbps, 128);
-        options.select_audio(AudioChoice::CopySource);
         assert_eq!(options.audio_kbps, 128);
     }
 
