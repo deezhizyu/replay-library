@@ -15,6 +15,7 @@ use ffmpeg::{ChannelLayout, frame};
 use ffmpeg_next as ffmpeg;
 
 use crate::media::source::read_packet;
+use crate::mutex_ext::MutexExt as _;
 
 const OUTPUT_CHANNELS: usize = 2;
 const BUFFER_SECONDS: f64 = 0.4;
@@ -57,9 +58,7 @@ impl Shared {
     }
 
     fn ring(&self) -> MutexGuard<'_, Ring> {
-        self.ring
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.ring.lock_ignoring_poison()
     }
 }
 

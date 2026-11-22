@@ -13,6 +13,7 @@ mod library;
 mod library_model;
 mod local_time;
 mod media;
+mod mutex_ext;
 mod probe_cache;
 mod recycle_bin;
 mod settings;

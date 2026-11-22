@@ -13,6 +13,7 @@ use crate::library::ClipInfo;
 use crate::media::convert::{FrameConverter, fit_within};
 use crate::media::render_image::from_bgra;
 use crate::media::source::VideoSource;
+use crate::mutex_ext::MutexExt as _;
 
 const QUEUE_CAPACITY: usize = 8;
 const FALLBACK_FRAME_RATE: f64 = 60.0;
@@ -49,9 +50,7 @@ struct Shared {
 
 impl Shared {
     fn lock(&self) -> MutexGuard<'_, State> {
-        self.state
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.state.lock_ignoring_poison()
     }
 }
 
