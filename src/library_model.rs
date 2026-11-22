@@ -263,6 +263,10 @@ impl LibraryModel {
         }
     }
 
+    pub fn indexing_remaining(&self) -> usize {
+        self.indexer.remaining()
+    }
+
     pub fn total_size_bytes(&self) -> u64 {
         self.clips.iter().map(|clip| clip.size_bytes).sum()
     }

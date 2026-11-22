@@ -538,11 +538,13 @@ impl LibraryView {
 
     fn footer(&self, cx: &App) -> impl IntoElement {
         let model = self.model.read(cx);
+        let remaining = model.indexing_remaining();
         div()
             .h(px(30.0))
             .flex_none()
             .flex()
             .items_center()
+            .justify_between()
             .px(px(PAGE_PADDING))
             .border_t_1()
             .border_color(theme::border_subtle())
@@ -554,6 +556,14 @@ impl LibraryView {
                 format_count(model.clips.len()),
                 format_size(model.total_size_bytes())
             ))
+            .children((remaining > 0).then(|| {
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(div().size(px(6.0)).rounded_full().bg(theme::accent()))
+                    .child(format!("Indexing {} clips", format_count(remaining)))
+            }))
     }
 }
 
