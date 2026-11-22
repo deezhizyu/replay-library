@@ -4,7 +4,7 @@ use gpui::{IntoElement, WindowControlArea, div, px};
 use crate::components::icon::icon;
 use crate::theme;
 
-const HEIGHT: f32 = 44.0;
+const HEIGHT: f32 = 34.0;
 const BUTTON_WIDTH: f32 = 46.0;
 
 pub fn titlebar() -> impl IntoElement {
