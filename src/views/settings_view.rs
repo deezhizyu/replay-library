@@ -330,7 +330,7 @@ impl Render for SettingsView {
                                     .child(
                                         div()
                                             .id("add-folder")
-                                            .h(px(68.0))
+                                            .h(px(44.0))
                                             .m_2()
                                             .flex()
                                             .items_center()
