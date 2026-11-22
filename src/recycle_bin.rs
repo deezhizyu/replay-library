@@ -3,8 +3,8 @@ use std::path::Path;
 
 use anyhow::{Result, anyhow};
 use windows::Win32::UI::Shell::{
-    FO_DELETE, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT, SHFILEOPSTRUCTW,
-    SHFileOperationW,
+    FO_DELETE, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT, FOF_WANTNUKEWARNING,
+    SHFILEOPSTRUCTW, SHFileOperationW,
 };
 use windows::core::PCWSTR;
 
@@ -14,7 +14,12 @@ pub fn move_to_recycle_bin(path: &Path) -> Result<()> {
     let mut operation = SHFILEOPSTRUCTW {
         wFunc: FO_DELETE,
         pFrom: PCWSTR(wide.as_ptr()),
-        fFlags: (FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT).0 as u16,
+        fFlags: (FOF_ALLOWUNDO
+            | FOF_NOCONFIRMATION
+            | FOF_NOERRORUI
+            | FOF_SILENT
+            | FOF_WANTNUKEWARNING)
+            .0 as u16,
         ..Default::default()
     };
     let code = unsafe { SHFileOperationW(&mut operation) };
