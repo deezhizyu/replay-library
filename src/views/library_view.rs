@@ -21,6 +21,7 @@ actions!(library, [FocusSearch]);
 
 const PAGE_PADDING: f32 = 32.0;
 const CARD_GAP: f32 = 16.0;
+const THUMBNAIL_RADIUS: f32 = 10.0;
 const MINIMUM_CARD_WIDTH_RANGE: (f32, f32) = (180.0, 360.0);
 const TEXT_BLOCK_HEIGHT: f32 = 46.0;
 const CHROME_HEIGHT: f32 = 34.0 + 64.0 + 30.0 + 16.0;
@@ -54,6 +55,7 @@ pub struct LibraryView {
     card_width: f32,
     sort_menu_open: bool,
     hover: Option<HoverState>,
+    last_viewed: Option<String>,
     focus_handle: FocusHandle,
 }
 
@@ -85,8 +87,14 @@ impl LibraryView {
             card_width: 260.0,
             sort_menu_open: false,
             hover: None,
+            last_viewed: None,
             focus_handle: cx.focus_handle(),
         }
+    }
+
+    pub fn set_last_viewed(&mut self, clip_id: String, cx: &mut Context<Self>) {
+        self.last_viewed = Some(clip_id);
+        cx.notify();
     }
 
     fn hover_move(
@@ -239,6 +247,7 @@ impl LibraryView {
                 .child(text)
         };
         let info = clip.info.as_ref();
+        let last_viewed = self.last_viewed.as_ref() == Some(&clip.id);
         div()
             .id(("clip", clip_index))
             .group(group_name.clone())
@@ -268,7 +277,7 @@ impl LibraryView {
                     .relative()
                     .w_full()
                     .h(px(thumbnail_height))
-                    .rounded(px(10.0))
+                    .rounded(px(THUMBNAIL_RADIUS))
                     .overflow_hidden()
                     .bg(theme::surface())
                     .when(thumbnail_ready, |this| {
@@ -276,6 +285,7 @@ impl LibraryView {
                             img(clip.thumbnail_path())
                                 .w_full()
                                 .h_full()
+                                .rounded(px(THUMBNAIL_RADIUS))
                                 .object_fit(ObjectFit::Cover),
                         )
                     })
@@ -285,16 +295,28 @@ impl LibraryView {
                             .top_0()
                             .left_0()
                             .size_full()
-                            .child(img(image).size_full().object_fit(ObjectFit::Cover))
+                            .child(
+                                img(image)
+                                    .size_full()
+                                    .rounded(px(THUMBNAIL_RADIUS))
+                                    .object_fit(ObjectFit::Cover),
+                            )
                     }))
                     .children(hover_fraction.map(|fraction| {
                         div()
                             .absolute()
-                            .bottom_0()
-                            .left_0()
+                            .bottom(px(6.0))
+                            .left(px(THUMBNAIL_RADIUS))
+                            .right(px(THUMBNAIL_RADIUS))
                             .h(px(4.0))
-                            .w(gpui::relative(fraction))
-                            .bg(theme::accent())
+                            .rounded_full()
+                            .child(
+                                div()
+                                    .h_full()
+                                    .w(gpui::relative(fraction))
+                                    .rounded_full()
+                                    .bg(theme::accent()),
+                            )
                     }))
                     .child(
                         div()
@@ -302,9 +324,13 @@ impl LibraryView {
                             .top_0()
                             .left_0()
                             .size_full()
-                            .rounded(px(10.0))
+                            .rounded(px(THUMBNAIL_RADIUS))
                             .border_2()
-                            .border_color(gpui::transparent_black())
+                            .border_color(if last_viewed {
+                                theme::last_viewed_border().into()
+                            } else {
+                                gpui::transparent_black()
+                            })
                             .group_hover(group_name.clone(), |style| {
                                 style
                                     .border_color(theme::accent())
@@ -325,28 +351,13 @@ impl LibraryView {
                             .bottom(px(10.0))
                             .child(badge(format_duration(info.duration_seconds).into()))
                     }))
-                    .child(
+                    .children(last_viewed.then(|| {
                         div()
                             .absolute()
-                            .top_0()
-                            .left_0()
-                            .size_full()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .invisible()
-                            .group_hover(group_name, |style| style.visible())
-                            .child(
-                                div()
-                                    .size(px(44.0))
-                                    .rounded_full()
-                                    .bg(theme::accent())
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .child(icon("play", 18.0, theme::on_accent())),
-                            ),
-                    ),
+                            .right(px(8.0))
+                            .top(px(8.0))
+                            .child(badge("Last viewed".into()))
+                    })),
             )
             .child(
                 div()

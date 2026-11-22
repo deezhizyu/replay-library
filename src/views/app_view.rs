@@ -135,6 +135,11 @@ impl AppView {
     }
 
     fn close_player(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Screen::Player(player) = &self.screen {
+            let clip_id = player.read(cx).clip().id.clone();
+            self.library_view
+                .update(cx, |view, cx| view.set_last_viewed(clip_id, cx));
+        }
         self.screen = Screen::Library;
         window.focus(&self.library_view.read(cx).focus_handle(cx));
         cx.notify();

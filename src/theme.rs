@@ -31,6 +31,10 @@ pub fn border_strong() -> Rgba {
     rgb(0x2a2f37)
 }
 
+pub fn last_viewed_border() -> Rgba {
+    rgb(0x6b7280)
+}
+
 pub fn text() -> Rgba {
     rgb(0xe9ecf1)
 }
