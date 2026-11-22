@@ -23,6 +23,7 @@ impl AssetSource for EmbeddedAssets {
             "icons/fullscreen.svg" => include_bytes!("../assets/icons/fullscreen.svg"),
             "icons/zap.svg" => include_bytes!("../assets/icons/zap.svg"),
             "icons/scissors.svg" => include_bytes!("../assets/icons/scissors.svg"),
+            "icons/file.svg" => include_bytes!("../assets/icons/file.svg"),
             "icons/folder.svg" => include_bytes!("../assets/icons/folder.svg"),
             "icons/trash.svg" => include_bytes!("../assets/icons/trash.svg"),
             "icons/plus.svg" => include_bytes!("../assets/icons/plus.svg"),
