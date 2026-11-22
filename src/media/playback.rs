@@ -20,6 +20,7 @@ const FALLBACK_FRAME_RATE: f64 = 60.0;
 
 struct VideoFrame {
     presentation_seconds: f64,
+    preview: bool,
     image: Arc<RenderImage>,
 }
 
@@ -108,7 +109,11 @@ impl Playback {
     pub fn seek(&self, seconds: f64, exact: bool) {
         let mut state = self.shared.lock();
         state.generation += 1;
-        state.frames.clear();
+        if exact {
+            state.frames.clear();
+        } else {
+            state.frames.retain(|frame| frame.preview);
+        }
         state.ended = false;
         state.frames_requested = 1;
         state.seek = Some(SeekRequest {
@@ -153,11 +158,9 @@ impl Playback {
         let tolerance = 0.5 / f64::from(self.info.frame_rate.max(1.0));
         let mut state = self.shared.lock();
         let mut latest = None;
-        while state
-            .frames
-            .front()
-            .is_some_and(|frame| frame.presentation_seconds <= position_seconds + tolerance)
-        {
+        while state.frames.front().is_some_and(|frame| {
+            frame.preview || frame.presentation_seconds <= position_seconds + tolerance
+        }) {
             latest = state.frames.pop_front();
         }
         if latest.is_some() {
@@ -175,6 +178,10 @@ impl Drop for Playback {
             worker.join().ok();
         }
     }
+}
+
+fn keeps_frame(scrub_frame: bool, current_generation: bool) -> bool {
+    scrub_frame || current_generation
 }
 
 fn next_step(shared: &Shared, skipping: bool) -> (Step, (u32, u32)) {
@@ -217,6 +224,7 @@ fn decode_loop(shared: &Shared, path: &Path) {
     let mut generation = 0;
     let mut skip_until: Option<f64> = None;
     let mut preview_pending = false;
+    let mut scrub_pending = false;
     let mut last_presentation = 0.0;
     loop {
         let (step, target_size) = next_step(shared, skip_until.is_some());
@@ -226,6 +234,7 @@ fn decode_loop(shared: &Shared, path: &Path) {
                 generation = request.generation;
                 skip_until = request.exact.then_some(request.seconds);
                 preview_pending = request.exact;
+                scrub_pending = !request.exact;
                 if source.seek_seconds(request.seconds).is_err() {
                     skip_until = None;
                 }
@@ -244,6 +253,7 @@ fn decode_loop(shared: &Shared, path: &Path) {
                     skip_until.is_none_or(|target| presentation + frame_duration * 0.5 >= target);
                 let show = reached || preview_pending;
                 preview_pending = false;
+                let scrub_frame = std::mem::take(&mut scrub_pending);
                 if reached {
                     skip_until = None;
                 }
@@ -268,14 +278,19 @@ fn decode_loop(shared: &Shared, path: &Path) {
                     * 1000.0
                     - state.average_frame_milliseconds)
                     * 0.1;
-                if state.generation == generation {
+                let current = state.generation == generation;
+                if keeps_frame(scrub_frame, current) {
+                    if scrub_frame {
+                        state.frames.clear();
+                    }
                     state.frames.push_back(VideoFrame {
                         presentation_seconds: presentation,
+                        preview: scrub_frame,
                         image,
                     });
-                    if !state.playing {
-                        state.frames_requested = state.frames_requested.saturating_sub(1);
-                    }
+                }
+                if current && !state.playing {
+                    state.frames_requested = state.frames_requested.saturating_sub(1);
                 }
             }
             Ok(None) | Err(_) => {
@@ -286,5 +301,17 @@ fn decode_loop(shared: &Shared, path: &Path) {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::keeps_frame;
+
+    #[test]
+    fn stale_scrub_frame_is_kept_and_stale_exact_frame_is_dropped() {
+        assert!(keeps_frame(true, false));
+        assert!(keeps_frame(false, true));
+        assert!(!keeps_frame(false, false));
     }
 }
