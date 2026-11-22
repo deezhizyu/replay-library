@@ -3,7 +3,7 @@ use std::thread;
 use std::time::Duration;
 
 use gpui::prelude::*;
-use gpui::{Context, Entity, Focusable as _, IntoElement, Render, SharedString, Window, div, px};
+use gpui::{Context, Entity, Focusable as _, IntoElement, Render, Window, div, px};
 
 use crate::components::titlebar::titlebar;
 use crate::library_model::LibraryModel;
@@ -153,12 +153,7 @@ fn move_to_recycle_bin_when_released(path: &Path) -> anyhow::Result<()> {
 }
 
 impl Render for AppView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let breadcrumb = match &self.screen {
-            Screen::Library => None,
-            Screen::Settings(_) => Some(SharedString::from("Settings")),
-            Screen::Player(player) => Some(SharedString::from(player.read(cx).clip().file_name())),
-        };
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         div()
             .size_full()
             .flex()
@@ -170,7 +165,7 @@ impl Render for AppView {
             .border_1()
             .border_color(theme::border_subtle())
             .rounded(px(10.0))
-            .child(titlebar(breadcrumb))
+            .child(titlebar())
             .child(div().flex_1().min_h_0().child(match &self.screen {
                 Screen::Library => self.library_view.clone().into_any_element(),
                 Screen::Player(player) => player.clone().into_any_element(),

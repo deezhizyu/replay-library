@@ -1,5 +1,5 @@
 use gpui::prelude::*;
-use gpui::{Div, IntoElement, SharedString, WindowControlArea, div, px};
+use gpui::{IntoElement, WindowControlArea, div, px};
 
 use crate::components::icon::icon;
 use crate::theme;
@@ -7,7 +7,7 @@ use crate::theme;
 const HEIGHT: f32 = 44.0;
 const BUTTON_WIDTH: f32 = 46.0;
 
-pub fn titlebar(breadcrumb: Option<SharedString>) -> impl IntoElement {
+pub fn titlebar() -> impl IntoElement {
     div()
         .h(px(HEIGHT))
         .flex_none()
@@ -26,19 +26,12 @@ pub fn titlebar(breadcrumb: Option<SharedString>) -> impl IntoElement {
                 .flex()
                 .items_center()
                 .gap_2p5()
-                .child(logo())
                 .child(
                     div()
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_size(px(13.0))
                         .child("Replay Library"),
-                )
-                .children(breadcrumb.map(|text| {
-                    div()
-                        .text_size(px(12.0))
-                        .text_color(theme::text_muted())
-                        .child(SharedString::from(format!("/ {text}")))
-                })),
+                ),
         )
         .child(
             div()
@@ -48,18 +41,6 @@ pub fn titlebar(breadcrumb: Option<SharedString>) -> impl IntoElement {
                 .child(window_button("maximize", WindowControlArea::Max, false))
                 .child(window_button("close", WindowControlArea::Close, true)),
         )
-}
-
-pub fn logo() -> Div {
-    div()
-        .size(px(20.0))
-        .flex_none()
-        .rounded(px(6.0))
-        .bg(theme::accent())
-        .flex()
-        .items_center()
-        .justify_center()
-        .child(icon("play", 10.0, theme::on_accent()))
 }
 
 fn window_button(
