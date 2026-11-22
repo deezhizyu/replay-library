@@ -33,3 +33,7 @@ cargo run --release
 | Esc | Back |
 
 See `AGENTS.md`, `CODE_STYLE.md` and `PLAN.md` for the project rules and design.
+
+## License
+
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT) at your option. The bundled FFmpeg build (LGPL) and fonts (SIL Open Font License) keep their own licenses.
