@@ -23,6 +23,10 @@ pub struct ClipInfo {
     pub duration_seconds: f64,
     pub codec: String,
     pub bitrate: u64,
+    #[serde(default)]
+    pub audio_codec: String,
+    #[serde(default)]
+    pub audio_kbps: u32,
 }
 
 impl ClipInfo {
@@ -440,6 +444,8 @@ mod tests {
             duration_seconds: 1.0,
             codec: "HEVC".into(),
             bitrate: 0,
+            audio_codec: "AAC".into(),
+            audio_kbps: 128,
         };
         assert_eq!(info(1440, 59.94).badge(), "1440p60");
         assert_eq!(info(2160, 60.0).badge(), "4K60");

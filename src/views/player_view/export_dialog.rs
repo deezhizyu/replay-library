@@ -7,14 +7,21 @@ use crate::format::{format_size, format_timecode};
 use crate::transcode::{self, JobPhase, JobSpec};
 
 impl PlayerView {
-    pub(super) fn begin_trim_export(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn begin_export(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let (options, target_bytes, suffix) = match self.export_tab {
+            ExportTab::Custom => (self.export_options.clone(), None, "clip".to_string()),
+            ExportTab::FileSize => (
+                self.compress_plan().applied_to(self.export_options.clone()),
+                Some(self.compress_target.target_bytes()),
+                format!("{}mb", self.compress_target.megabytes()),
+            ),
+        };
         let Some(encoder) = self
             .encoders(cx)
-            .and_then(|found| found.for_codec(self.export_options.codec))
+            .and_then(|found| found.for_codec(options.codec))
         else {
             return;
         };
-        let options = self.export_options.clone();
         let spec = JobSpec {
             input: self.clip.path.clone(),
             output: PathBuf::new(),
@@ -30,37 +37,8 @@ impl PlayerView {
             audio: options.audio,
             video_kbps: options.video_kbps,
             audio_kbps: options.audio_kbps,
-            target_bytes: None,
+            target_bytes,
         };
-        self.choose_output_and_start(spec, "clip", window, cx);
-    }
-
-    pub(super) fn begin_compress(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let chosen = self.compress_plan();
-        let Some(encoder) = self
-            .encoders(cx)
-            .and_then(|found| found.for_codec(chosen.codec))
-        else {
-            return;
-        };
-        let spec = JobSpec {
-            input: self.clip.path.clone(),
-            output: PathBuf::new(),
-            start_seconds: 0.0,
-            duration_seconds: self.info.duration_seconds,
-            width: chosen.width,
-            height: chosen.height,
-            frame_rate: chosen.frame_rate,
-            source_height: self.info.height,
-            source_frame_rate: self.info.frame_rate,
-            encoder,
-            codec: chosen.codec,
-            audio: crate::export_options::AudioChoice::Aac,
-            video_kbps: chosen.video_kbps,
-            audio_kbps: chosen.audio_kbps,
-            target_bytes: Some(self.compress_target.target_bytes()),
-        };
-        let suffix = format!("{}mb", self.compress_target.megabytes());
         self.choose_output_and_start(spec, &suffix, window, cx);
     }
 
@@ -125,7 +103,7 @@ impl PlayerView {
             return div().into_any_element();
         };
         let phase = job.handle.phase();
-        let compressing = self.mode == Mode::Compress;
+        let compressing = self.export_tab == ExportTab::FileSize;
         let output = job.output.to_string_lossy().into_owned();
         let finished = matches!(phase, JobPhase::Done { .. });
         let (title, percent) = match &phase {
@@ -179,7 +157,7 @@ impl PlayerView {
                         format_size(*bytes)
                     },
                 ),
-                ("Length", format_timecode(self.exported_length())),
+                ("Length", format_timecode(self.selection.length())),
                 ("Took", format_timecode(*took_seconds)),
                 ("Format", job.format_label.clone()),
             ],
@@ -348,12 +326,5 @@ impl PlayerView {
                     ),
             )
             .into_any_element()
-    }
-
-    fn exported_length(&self) -> f64 {
-        match self.mode {
-            Mode::Trim => self.selection.length(),
-            _ => self.info.duration_seconds,
-        }
     }
 }

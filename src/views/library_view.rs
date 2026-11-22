@@ -290,17 +290,12 @@ impl LibraryView {
                         )
                     })
                     .children(hover_tile.map(|image| {
-                        div()
-                            .absolute()
-                            .top_0()
-                            .left_0()
-                            .size_full()
-                            .child(
-                                img(image)
-                                    .size_full()
-                                    .rounded(px(THUMBNAIL_RADIUS))
-                                    .object_fit(ObjectFit::Cover),
-                            )
+                        div().absolute().top_0().left_0().size_full().child(
+                            img(image)
+                                .size_full()
+                                .rounded(px(THUMBNAIL_RADIUS))
+                                .object_fit(ObjectFit::Cover),
+                        )
                     }))
                     .children(hover_fraction.map(|fraction| {
                         div()

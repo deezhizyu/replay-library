@@ -32,7 +32,6 @@ impl AssetSource for EmbeddedAssets {
             "icons/download.svg" => include_bytes!("../assets/icons/download.svg"),
             "icons/repeat.svg" => include_bytes!("../assets/icons/repeat.svg"),
             "icons/check.svg" => include_bytes!("../assets/icons/check.svg"),
-            "icons/cpu.svg" => include_bytes!("../assets/icons/cpu.svg"),
             _ => return Ok(None),
         };
         Ok(Some(Cow::Borrowed(bytes)))

@@ -73,7 +73,11 @@ impl AppView {
         let Some(clip) = self.library.read(cx).clips.get(clip_index).cloned() else {
             return;
         };
-        if let Some(info) = clip.info.clone() {
+        if let Some(info) = clip
+            .info
+            .clone()
+            .filter(|info| !info.audio_codec.is_empty())
+        {
             self.show_player(clip, info, window, cx);
             return;
         }

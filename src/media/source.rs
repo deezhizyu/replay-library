@@ -16,6 +16,8 @@ pub struct VideoSource {
     time_base: Rational,
     frame_rate: f32,
     codec_name: &'static str,
+    audio_codec_name: &'static str,
+    audio_kbps: u32,
     end_of_stream_sent: bool,
 }
 
@@ -44,6 +46,15 @@ impl VideoSource {
             rate.numerator() as f32 / rate.denominator() as f32
         };
         let codec_name = codec_display_name(stream.parameters().id());
+        let (audio_codec_name, audio_kbps) =
+            input
+                .streams()
+                .best(Type::Audio)
+                .map_or(("None", 0), |audio| {
+                    let parameters = audio.parameters();
+                    let kbps = u32::try_from(parameters.bit_rate() / 1000).unwrap_or(0);
+                    (audio_codec_display_name(parameters.id()), kbps)
+                });
         let mut context = codec::context::Context::from_parameters(stream.parameters())?;
         context.set_threading(threading);
         let decoder = context.decoder().video()?;
@@ -54,6 +65,8 @@ impl VideoSource {
             time_base,
             frame_rate,
             codec_name,
+            audio_codec_name,
+            audio_kbps,
             end_of_stream_sent: false,
         })
     }
@@ -66,6 +79,8 @@ impl VideoSource {
             duration_seconds: self.input.duration() as f64 / f64::from(ffmpeg::ffi::AV_TIME_BASE),
             codec: self.codec_name.to_string(),
             bitrate: u64::try_from(self.input.bit_rate()).unwrap_or(0),
+            audio_codec: self.audio_codec_name.to_string(),
+            audio_kbps: self.audio_kbps,
         }
     }
 
@@ -112,6 +127,14 @@ fn codec_display_name(identifier: codec::Id) -> &'static str {
         codec::Id::AV1 => "AV1",
         codec::Id::VP9 => "VP9",
         _ => "Video",
+    }
+}
+
+fn audio_codec_display_name(identifier: codec::Id) -> &'static str {
+    match identifier {
+        codec::Id::AAC => "AAC",
+        codec::Id::OPUS => "Opus",
+        _ => "Audio",
     }
 }
 

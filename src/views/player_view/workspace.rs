@@ -1,7 +1,6 @@
 use super::*;
-use crate::components::panel::section_title;
 use crate::components::timeline::timeline_ruler;
-use crate::format::{format_size, format_timecode};
+use crate::format::format_timecode;
 
 const PANEL_WIDTH: f32 = 400.0;
 
@@ -11,19 +10,7 @@ impl PlayerView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let trimming = self.mode == Mode::Trim;
-        let (panel_body, panel_footer) = if trimming {
-            let (body, footer) = self.trim_panel(cx);
-            (body.into_any_element(), footer.into_any_element())
-        } else {
-            let (body, footer) = self.compress_panel(cx);
-            (body.into_any_element(), footer.into_any_element())
-        };
-        let bottom = if trimming {
-            self.trim_bottom(window, cx).into_any_element()
-        } else {
-            self.compress_bottom().into_any_element()
-        };
+        let (panel_body, panel_footer) = self.export_panel(cx);
         div()
             .size_full()
             .flex()
@@ -57,8 +44,8 @@ impl PlayerView {
                                     .child(self.video_surface())
                                     .when(self.debug, |this| this.child(self.debug_overlay())),
                             )
-                            .child(self.transport_row(trimming, cx))
-                            .child(bottom),
+                            .child(self.transport_row(cx))
+                            .child(self.trim_bottom(window, cx)),
                     ),
             )
             .child(
@@ -80,7 +67,14 @@ impl PlayerView {
                             .overflow_y_scroll()
                             .child(panel_body),
                     )
-                    .child(div().flex_none().pt_4().child(panel_footer)),
+                    .child(
+                        div()
+                            .flex_none()
+                            .flex()
+                            .flex_col()
+                            .pt_4()
+                            .child(panel_footer),
+                    ),
             )
     }
 
@@ -111,7 +105,7 @@ impl PlayerView {
             )
     }
 
-    fn transport_row(&self, trimming: bool, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn transport_row(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let loop_color = if self.loop_clip {
             theme::accent()
         } else {
@@ -149,24 +143,22 @@ impl PlayerView {
             )
             .child(self.time_readout())
             .child(div().flex_1())
-            .when(trimming, |this| {
-                this.child(
-                    div()
-                        .id("loop-clip")
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .text_size(px(13.0))
-                        .text_color(loop_color)
-                        .cursor_pointer()
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.loop_clip = !this.loop_clip;
-                            cx.notify();
-                        }))
-                        .child(icon("repeat", 16.0, loop_color))
-                        .child("Loop clip"),
-                )
-            })
+            .child(
+                div()
+                    .id("loop-clip")
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .text_size(px(13.0))
+                    .text_color(loop_color)
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.loop_clip = !this.loop_clip;
+                        cx.notify();
+                    }))
+                    .child(icon("repeat", 16.0, loop_color))
+                    .child("Loop clip"),
+            )
     }
 
     fn trim_bottom(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
@@ -238,98 +230,6 @@ impl PlayerView {
                     .children(hover.map(|fraction| self.hover_preview(fraction))),
             )
             .child(timeline_ruler(marks, self.info.duration_seconds))
-    }
-
-    fn compress_bottom(&self) -> impl IntoElement + use<> {
-        let plan = self.compress_plan();
-        let source_bytes = self.clip.size_bytes;
-        let result_bytes = plan.estimated_bytes(self.info.duration_seconds);
-        let fraction = (result_bytes as f64 / source_bytes.max(1) as f64).clamp(0.01, 1.0) as f32;
-        let saved = 100.0 - fraction * 100.0;
-        let bar = |label: &'static str,
-                   width: f32,
-                   color: gpui::Rgba,
-                   value: String,
-                   highlighted: bool| {
-            div()
-                .h(px(32.0))
-                .flex()
-                .items_center()
-                .gap_3()
-                .text_size(px(13.0))
-                .child(
-                    div()
-                        .w(px(56.0))
-                        .text_color(if highlighted {
-                            theme::text()
-                        } else {
-                            theme::text_muted()
-                        })
-                        .child(label),
-                )
-                .child(
-                    div()
-                        .flex_1()
-                        .h(px(14.0))
-                        .rounded_full()
-                        .bg(theme::surface())
-                        .child(
-                            div()
-                                .h_full()
-                                .w(gpui::relative(width))
-                                .rounded_full()
-                                .bg(color),
-                        ),
-                )
-                .child(
-                    div()
-                        .w(px(64.0))
-                        .flex()
-                        .justify_end()
-                        .font_family(theme::MONO_FONT)
-                        .text_size(px(12.0))
-                        .text_color(if highlighted {
-                            theme::accent()
-                        } else {
-                            theme::text()
-                        })
-                        .child(value),
-                )
-        };
-        div()
-            .flex_none()
-            .flex()
-            .flex_col()
-            .pt_4()
-            .child(
-                div()
-                    .flex()
-                    .items_baseline()
-                    .justify_between()
-                    .child(section_title("File size", None))
-                    .child(
-                        div()
-                            .font_family(theme::MONO_FONT)
-                            .text_size(px(16.0))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(theme::accent())
-                            .child(SharedString::from(format!("-{saved:.0}%"))),
-                    ),
-            )
-            .child(bar(
-                "Source",
-                1.0,
-                theme::border_strong(),
-                format_size(source_bytes),
-                false,
-            ))
-            .child(bar(
-                "Result",
-                fraction,
-                theme::accent(),
-                format_size(result_bytes),
-                true,
-            ))
     }
 }
 

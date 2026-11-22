@@ -409,6 +409,8 @@ mod tests {
             duration_seconds: 10.0,
             codec: "HEVC".into(),
             bitrate: 1,
+            audio_codec: "AAC".into(),
+            audio_kbps: 128,
         }
     }
 

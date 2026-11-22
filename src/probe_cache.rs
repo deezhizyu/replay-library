@@ -41,6 +41,8 @@ mod tests {
                 duration_seconds: 42.5,
                 codec: "HEVC".into(),
                 bitrate: 48_000_000,
+                audio_codec: "Opus".into(),
+                audio_kbps: 96,
             },
         );
         let text = toml::to_string(&entries).unwrap();

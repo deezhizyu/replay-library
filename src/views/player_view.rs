@@ -1,6 +1,6 @@
-mod compress_panel;
 mod export_dialog;
-mod trim_panel;
+mod export_panel;
+mod file_size_tab;
 mod workspace;
 
 use std::cell::Cell;
@@ -23,9 +23,9 @@ use crate::components::slider::slider;
 use crate::components::text_field::{TextChanged, TextField};
 use crate::components::timeline::{TIMELINE_HEIGHT, TimelineMarks, preview_left, timeline};
 use crate::compress_plan::CompressTarget;
-use crate::export_options::{ExportOptions, SourceFormat};
+use crate::export_options::{ExportOptions, SourceFormat, SourceStreams};
 use crate::format::format_timecode;
-use crate::library::{Clip, ClipInfo, taken_label};
+use crate::library::{Clip, ClipInfo, nominal_frame_rate, taken_label};
 use crate::local_time::Date;
 use crate::media::audio::AudioPlayer;
 use crate::media::filmstrip::{Filmstrip, PLAYER_TILE_COUNT};
@@ -55,8 +55,13 @@ pub enum PlayerEvent {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Mode {
     Watch,
-    Trim,
-    Compress,
+    Export,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ExportTab {
+    FileSize,
+    Custom,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -76,6 +81,7 @@ pub struct PlayerView {
     clip: Clip,
     info: ClipInfo,
     source: SourceFormat,
+    streams: SourceStreams,
     playback: Playback,
     audio: AudioPlayer,
     filmstrip: Filmstrip,
@@ -106,6 +112,11 @@ pub struct PlayerView {
     dragged_handle: Option<Handle>,
     loop_clip: bool,
     export_options: ExportOptions,
+    export_tab: ExportTab,
+    custom_height: bool,
+    custom_frame_rate: bool,
+    custom_height_field: Entity<TextField>,
+    custom_frame_rate_field: Entity<TextField>,
     compress_target: CompressTarget,
     custom_megabytes: Entity<TextField>,
     video_bitrate_field: Entity<TextField>,
@@ -141,7 +152,10 @@ impl PlayerView {
             height: info.height,
             frame_rate: info.frame_rate,
         };
+        let streams = SourceStreams::from_info(&info, source);
         let custom_megabytes = cx.new(|cx| TextField::new("12", true, cx));
+        let custom_height_field = cx.new(|cx| TextField::new("Height", true, cx));
+        let custom_frame_rate_field = cx.new(|cx| TextField::new("fps", true, cx));
         let video_bitrate_field = cx.new(|cx| TextField::new("Mbps", true, cx));
         let audio_bitrate_field = cx.new(|cx| TextField::new("kbps", true, cx));
         cx.subscribe(
@@ -149,6 +163,29 @@ impl PlayerView {
             |this, _, TextChanged(text): &TextChanged, cx| {
                 if let Ok(megabytes) = text.parse::<u32>() {
                     this.compress_target = CompressTarget::Custom(megabytes.clamp(1, 10_000));
+                    cx.notify();
+                }
+            },
+        )
+        .detach();
+        cx.subscribe(
+            &custom_height_field,
+            |this, _, TextChanged(text): &TextChanged, cx| {
+                if let Ok(height) = text.parse::<u32>() {
+                    this.export_options.height = height.clamp(2, this.source.height.max(2)) & !1;
+                    this.sync_bitrate_fields(cx);
+                    cx.notify();
+                }
+            },
+        )
+        .detach();
+        cx.subscribe(
+            &custom_frame_rate_field,
+            |this, _, TextChanged(text): &TextChanged, cx| {
+                if let Ok(rate) = text.parse::<u32>() {
+                    let source_rate = nominal_frame_rate(this.source.frame_rate).max(1);
+                    this.export_options.frame_rate = rate.clamp(1, source_rate);
+                    this.sync_bitrate_fields(cx);
                     cx.notify();
                 }
             },
@@ -175,13 +212,14 @@ impl PlayerView {
             },
         )
         .detach();
-        let export_options = ExportOptions::for_source(source);
+        let export_options = ExportOptions::for_source(source, streams);
         let mut view = Self {
             subtitle: taken_label(clip.taken, today).into(),
             selection: TrimSelection::whole(info.duration_seconds),
             clip,
             info,
             source,
+            streams,
             playback,
             audio: AudioPlayer::open(clip_path),
             filmstrip,
@@ -210,6 +248,11 @@ impl PlayerView {
             dragged_handle: None,
             loop_clip: false,
             export_options,
+            export_tab: ExportTab::FileSize,
+            custom_height: false,
+            custom_frame_rate: false,
+            custom_height_field,
+            custom_frame_rate_field,
             compress_target: CompressTarget::Megabytes8,
             custom_megabytes,
             video_bitrate_field,
@@ -246,7 +289,7 @@ impl PlayerView {
     }
 
     fn playback_bounds(&self) -> (f64, f64) {
-        if self.mode == Mode::Trim {
+        if self.mode == Mode::Export {
             (self.selection.start, self.selection.end)
         } else {
             (0.0, self.info.duration_seconds)
@@ -317,7 +360,7 @@ impl PlayerView {
                 self.set_playing(false);
                 self.scrubbing = true;
                 self.hover_fraction = Some(fraction);
-                self.dragged_handle = (self.mode == Mode::Trim)
+                self.dragged_handle = (self.mode == Mode::Export)
                     .then(|| self.handle_near(fraction, width))
                     .flatten();
                 self.drag_to(seconds, false);
@@ -424,7 +467,7 @@ impl PlayerView {
         let (start, end) = self.playback_bounds();
         let at_end = position >= end - END_EPSILON_SECONDS || self.playback.finished();
         if self.playing && at_end {
-            if self.mode == Mode::Trim && self.loop_clip {
+            if self.mode == Mode::Export && self.loop_clip {
                 self.seek_to(start, true);
             } else {
                 self.base_position = end;
@@ -517,7 +560,7 @@ impl PlayerView {
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let position_fraction = (self.position() / self.info.duration_seconds.max(0.001)) as f32;
-        let selection = (self.mode == Mode::Trim).then(|| self.selection.fractions());
+        let selection = (self.mode == Mode::Export).then(|| self.selection.fractions());
         let view = cx.entity();
         timeline(
             "player-timeline",
@@ -825,17 +868,8 @@ impl PlayerView {
             )
             .child(div().w(px(1.0)).h(px(28.0)).bg(theme::border()))
             .child(
-                button("compress", "Compress", Some("zap"), ButtonKind::Secondary)
-                    .on_click(cx.listener(|this, _, _, cx| this.enter_mode(Mode::Compress, cx))),
-            )
-            .child(
-                button(
-                    "trim-and-export",
-                    "Trim & export",
-                    Some("scissors"),
-                    ButtonKind::Primary,
-                )
-                .on_click(cx.listener(|this, _, _, cx| this.enter_mode(Mode::Trim, cx))),
+                button("export", "Export", Some("scissors"), ButtonKind::Primary)
+                    .on_click(cx.listener(|this, _, _, cx| this.enter_mode(Mode::Export, cx))),
             )
     }
 
@@ -937,7 +971,7 @@ impl Render for PlayerView {
         self.advance(window);
         let body = match self.mode {
             Mode::Watch => self.watch_layout(window, cx).into_any_element(),
-            Mode::Trim | Mode::Compress => self.workspace_layout(window, cx).into_any_element(),
+            Mode::Export => self.workspace_layout(window, cx).into_any_element(),
         };
         div()
             .track_focus(&self.focus_handle)
