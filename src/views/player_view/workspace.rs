@@ -12,6 +12,13 @@ impl PlayerView {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let trimming = self.mode == Mode::Trim;
+        let (panel_body, panel_footer) = if trimming {
+            let (body, footer) = self.trim_panel(cx);
+            (body.into_any_element(), footer.into_any_element())
+        } else {
+            let (body, footer) = self.compress_panel(cx);
+            (body.into_any_element(), footer.into_any_element())
+        };
         let bottom = if trimming {
             self.trim_bottom(window, cx).into_any_element()
         } else {
@@ -50,20 +57,24 @@ impl PlayerView {
             )
             .child(
                 div()
-                    .id("side-panel")
                     .w(px(PANEL_WIDTH))
                     .flex_none()
                     .h_full()
-                    .overflow_y_scroll()
+                    .flex()
+                    .flex_col()
                     .bg(gpui::rgb(0x0d0f12))
                     .border_l_1()
                     .border_color(theme::border_subtle())
                     .p_6()
-                    .child(if trimming {
-                        self.trim_panel(cx).into_any_element()
-                    } else {
-                        self.compress_panel(cx).into_any_element()
-                    }),
+                    .child(
+                        div()
+                            .id("side-panel")
+                            .flex_1()
+                            .min_h_0()
+                            .overflow_y_scroll()
+                            .child(panel_body),
+                    )
+                    .child(div().flex_none().pt_4().child(panel_footer)),
             )
     }
 
@@ -74,11 +85,10 @@ impl PlayerView {
             .flex()
             .items_center()
             .gap_3()
-            .child(back_pill(
-                "back-to-player",
-                "Player",
-                cx.listener(|this, _, _, cx| this.enter_mode(Mode::Watch, cx)),
-            ))
+            .child(
+                icon_button("back-to-player", "arrow-left", 40.0)
+                    .on_click(cx.listener(|this, _, _, cx| this.enter_mode(Mode::Watch, cx))),
+            )
             .child(
                 div()
                     .text_size(px(14.0))

@@ -6,7 +6,7 @@ use gpui::{
     SharedString, Window, div, px,
 };
 
-use crate::components::button::{ButtonKind, button};
+use crate::components::button::{ButtonKind, button, icon_button};
 use crate::components::icon::icon;
 use crate::components::toggle::toggle;
 use crate::format::{format_count, format_size};
@@ -265,19 +265,8 @@ impl Render for SettingsView {
                     .border_r_1()
                     .border_color(theme::border_subtle())
                     .child(
-                        div()
-                            .id("settings-back")
-                            .h(px(40.0))
-                            .px_3()
-                            .flex()
-                            .items_center()
-                            .gap_2()
-                            .text_size(px(14.0))
-                            .font_weight(FontWeight::MEDIUM)
-                            .cursor_pointer()
-                            .on_click(cx.listener(|_, _, _, cx| cx.emit(SettingsEvent::Back)))
-                            .child(icon("arrow-left", 16.0, theme::text()))
-                            .child("Library"),
+                        icon_button("settings-back", "arrow-left", 40.0)
+                            .on_click(cx.listener(|_, _, _, cx| cx.emit(SettingsEvent::Back))),
                     )
                     .child(
                         div()

@@ -832,32 +832,6 @@ impl PlayerView {
     }
 }
 
-fn back_pill(
-    id: &'static str,
-    label: &'static str,
-    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
-) -> impl IntoElement {
-    div()
-        .id(id)
-        .h(px(44.0))
-        .pl_3()
-        .pr_4()
-        .flex()
-        .items_center()
-        .gap_2()
-        .rounded_full()
-        .bg(gpui::rgba(0x0a0b0dcc))
-        .border_1()
-        .border_color(theme::border())
-        .text_size(px(13.0))
-        .font_weight(FontWeight::MEDIUM)
-        .cursor_pointer()
-        .hover(|style| style.bg(theme::surface_raised()))
-        .on_click(on_click)
-        .child(icon("arrow-left", 16.0, theme::text()))
-        .child(label)
-}
-
 fn initial_target(window: &Window) -> (u32, u32) {
     let viewport = window.viewport_size();
     let scale = window.scale_factor();

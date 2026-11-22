@@ -13,7 +13,10 @@ impl PlayerView {
         )
     }
 
-    pub(super) fn compress_panel(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    pub(super) fn compress_panel(
+        &self,
+        cx: &mut Context<Self>,
+    ) -> (impl IntoElement + use<>, impl IntoElement + use<>) {
         let chosen = self.compress_plan();
         let encoder = self
             .encoders(cx)
@@ -84,10 +87,10 @@ impl PlayerView {
             )
         };
         let custom_selected = matches!(target, CompressTarget::Custom(_));
+        (
         div()
             .flex()
             .flex_col()
-            .min_h_full()
             .gap_4()
             .child(
                 div()
@@ -160,9 +163,8 @@ impl PlayerView {
                     .child(table_row("Audio bitrate", format!("{} kbps", chosen.audio_kbps)))
                     .child(table_row("Result", format_size(result))),
             ))
-            .child(
+            ,
                 div()
-                    .mt_auto()
                     .flex()
                     .flex_col()
                     .gap_4()
@@ -174,7 +176,7 @@ impl PlayerView {
                     .when(encoder.is_none(), |this| this.opacity(0.5))
                     .on_click(cx.listener(|this, _, window, cx| this.begin_compress(window, cx))),
             )
-            )
+        )
     }
 }
 
