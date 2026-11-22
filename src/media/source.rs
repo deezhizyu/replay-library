@@ -21,6 +21,14 @@ pub struct VideoSource {
 
 impl VideoSource {
     pub fn open(path: &Path) -> Result<Self> {
+        Self::open_with(path, threading::Config::kind(threading::Type::Frame))
+    }
+
+    pub fn open_single_threaded(path: &Path) -> Result<Self> {
+        Self::open_with(path, threading::Config::kind(threading::Type::None))
+    }
+
+    fn open_with(path: &Path, threading: threading::Config) -> Result<Self> {
         let input =
             format::input(path).with_context(|| format!("failed to open {}", path.display()))?;
         let stream = input
@@ -37,7 +45,7 @@ impl VideoSource {
         };
         let codec_name = codec_display_name(stream.parameters().id());
         let mut context = codec::context::Context::from_parameters(stream.parameters())?;
-        context.set_threading(threading::Config::kind(threading::Type::Frame));
+        context.set_threading(threading);
         let decoder = context.decoder().video()?;
         Ok(Self {
             input,

@@ -16,7 +16,7 @@ const POSTER_POSITION: f64 = 0.15;
 const JPEG_QUALITY: u8 = 82;
 
 pub fn probe_and_write_thumbnail(clip: &Path, destination: &Path) -> Result<ClipInfo> {
-    let mut source = VideoSource::open(clip)?;
+    let mut source = VideoSource::open_single_threaded(clip)?;
     let info = source.info();
     if !destination.exists() {
         source.seek_seconds(info.duration_seconds * POSTER_POSITION)?;

@@ -4,6 +4,10 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 
+use windows::Win32::System::Threading::{
+    GetCurrentThread, SetThreadPriority, THREAD_MODE_BACKGROUND_BEGIN,
+};
+
 use crate::library::ClipInfo;
 use crate::media::thumbnail::probe_and_write_thumbnail;
 
@@ -45,7 +49,7 @@ impl Indexer {
         });
         let (sender, results) = channel();
         let worker_count =
-            thread::available_parallelism().map_or(2, |count| (count.get() / 2).max(2));
+            thread::available_parallelism().map_or(2, |count| (count.get() / 4).max(2));
         for _ in 0..worker_count {
             let shared = shared.clone();
             let sender = sender.clone();
@@ -102,6 +106,7 @@ impl Indexer {
 }
 
 fn work(shared: &Shared, sender: &Sender<IndexResult>) {
+    unsafe { SetThreadPriority(GetCurrentThread(), THREAD_MODE_BACKGROUND_BEGIN) }.ok();
     loop {
         let job = {
             let mut queues = shared
