@@ -3,9 +3,12 @@ use std::thread;
 use std::time::Duration;
 
 use gpui::prelude::*;
-use gpui::{Context, Entity, Focusable as _, IntoElement, Render, Window, div, px};
+use gpui::{
+    Context, Entity, Focusable as _, IntoElement, Render, SharedString, Task, Window, div, px,
+};
 
 use crate::components::titlebar::titlebar;
+use crate::library::{Clip, ClipInfo};
 use crate::library_model::LibraryModel;
 use crate::media::source::VideoSource;
 use crate::recycle_bin::move_to_recycle_bin;
@@ -16,6 +19,7 @@ use crate::views::settings_view::{SettingsEvent, SettingsView};
 
 const DELETE_ATTEMPTS: u32 = 20;
 const DELETE_RETRY_DELAY: Duration = Duration::from_millis(100);
+const NOTICE_DURATION: Duration = Duration::from_secs(6);
 
 enum Screen {
     Library,
@@ -27,6 +31,8 @@ pub struct AppView {
     screen: Screen,
     library: Entity<LibraryModel>,
     library_view: Entity<LibraryView>,
+    notice: Option<SharedString>,
+    notice_timer: Option<Task<()>>,
 }
 
 impl AppView {
@@ -45,20 +51,60 @@ impl AppView {
             screen: Screen::Library,
             library,
             library_view,
+            notice: None,
+            notice_timer: None,
         }
+    }
+
+    fn show_notice(&mut self, message: String, cx: &mut Context<Self>) {
+        self.notice = Some(message.into());
+        self.notice_timer = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(NOTICE_DURATION).await;
+            this.update(cx, |this, cx| {
+                this.notice = None;
+                cx.notify();
+            })
+            .ok();
+        }));
+        cx.notify();
     }
 
     fn open_clip(&mut self, clip_index: usize, window: &mut Window, cx: &mut Context<Self>) {
         let Some(clip) = self.library.read(cx).clips.get(clip_index).cloned() else {
             return;
         };
-        let Some(info) = clip.info.clone().or_else(|| {
-            VideoSource::open(&clip.path)
-                .ok()
-                .map(|source| source.info())
-        }) else {
+        if let Some(info) = clip.info.clone() {
+            self.show_player(clip, info, window, cx);
             return;
-        };
+        }
+        let path = clip.path.clone();
+        cx.spawn_in(window, async move |this, cx| {
+            let probed = cx
+                .background_executor()
+                .spawn(async move { VideoSource::open(&path).map(|source| source.info()) })
+                .await;
+            this.update_in(cx, |this, window, cx| match probed {
+                Ok(info) => this.show_player(clip, info, window, cx),
+                Err(_) => {
+                    let message = format!(
+                        "Could not open {}. The file may be damaged or unsupported.",
+                        clip.file_name()
+                    );
+                    this.show_notice(message, cx);
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn show_player(
+        &mut self,
+        clip: Clip,
+        info: ClipInfo,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let player = cx.new(|cx| PlayerView::new(clip, info, window, cx));
         cx.subscribe_in(
             &player,
@@ -98,17 +144,23 @@ impl AppView {
         let Screen::Player(player) = &self.screen else {
             return;
         };
-        let path = player.read(cx).clip().path.clone();
+        let clip = player.read(cx).clip().clone();
         self.close_player(window, cx);
         cx.spawn(async move |this, cx| {
+            let path = clip.path.clone();
             let outcome = cx
                 .background_executor()
                 .spawn(async move { move_to_recycle_bin_when_released(&path) })
                 .await;
-            if let Err(error) = outcome {
-                eprintln!("{error:#}");
-            }
             this.update(cx, |this, cx| {
+                if let Err(error) = outcome {
+                    eprintln!("{error:#}");
+                    let message = format!(
+                        "Could not move {} to the Recycle Bin. Close any program that is using it and try again.",
+                        clip.file_name()
+                    );
+                    this.show_notice(message, cx);
+                }
                 this.library.update(cx, |model, cx| model.rescan(cx))
             })
             .ok();
@@ -165,11 +217,33 @@ impl Render for AppView {
             .border_1()
             .border_color(theme::border_subtle())
             .rounded(px(10.0))
+            .relative()
             .child(titlebar())
             .child(div().flex_1().min_h_0().child(match &self.screen {
                 Screen::Library => self.library_view.clone().into_any_element(),
                 Screen::Player(player) => player.clone().into_any_element(),
                 Screen::Settings(settings) => settings.clone().into_any_element(),
+            }))
+            .children(self.notice.clone().map(|message| {
+                div()
+                    .absolute()
+                    .bottom(px(24.0))
+                    .left_0()
+                    .right_0()
+                    .flex()
+                    .justify_center()
+                    .child(
+                        div()
+                            .px_4()
+                            .py_3()
+                            .rounded(px(10.0))
+                            .bg(theme::surface())
+                            .border_1()
+                            .border_color(theme::border())
+                            .shadow_lg()
+                            .text_size(px(13.0))
+                            .child(message),
+                    )
             }))
     }
 }
