@@ -241,51 +241,64 @@ impl PlayerView {
                     ),
             )
             .child(
-                div().child(section_title("Video codec", None)).child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap_2()
-                        .children(VideoCodec::ALL.map(|codec| {
-                            let available =
-                                encoders.is_none_or(|found| found.for_codec(codec).is_some());
-                            let note = (!available).then(|| SharedString::from("No encoder found"));
-                            choice_card(
-                                ("codec", codec as usize),
-                                codec.label(),
-                                codec.tagline(),
-                                note,
-                                self.export_options.codec == codec,
-                                available,
-                            )
-                            .on_click(cx.listener(
-                                move |this, _, _, cx| {
-                                    if available {
-                                        this.export_options.codec = codec;
-                                        this.sync_bitrate_fields(cx);
-                                        cx.notify();
-                                    }
-                                },
-                            ))
-                        })),
-                ),
+                div()
+                    .child(section_title(
+                        "Video codec",
+                        VideoCodec::from_label(&self.info.codec)
+                            .map(|codec| format!("source {}", codec.short_label())),
+                    ))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_2()
+                            .children(VideoCodec::ALL.map(|codec| {
+                                let available =
+                                    encoders.is_none_or(|found| found.for_codec(codec).is_some());
+                                let note =
+                                    (!available).then(|| SharedString::from("No encoder found"));
+                                choice_card(
+                                    ("codec", codec as usize),
+                                    codec.label(),
+                                    codec.tagline(),
+                                    note,
+                                    self.export_options.codec == codec,
+                                    available,
+                                )
+                                .on_click(cx.listener(
+                                    move |this, _, _, cx| {
+                                        if available {
+                                            this.export_options.codec = codec;
+                                            this.sync_bitrate_fields(cx);
+                                            cx.notify();
+                                        }
+                                    },
+                                ))
+                            })),
+                    ),
             )
-            .child(div().child(section_title("Audio codec", None)).child(
-                div().flex().gap_2().children(AudioChoice::ALL.map(|audio| {
-                    choice_chip(
-                        ("audio", audio as usize),
-                        audio.label(),
-                        self.export_options.audio == audio,
-                        false,
-                        true,
-                    )
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.export_options.select_audio(audio);
-                        this.sync_bitrate_fields(cx);
-                        cx.notify();
-                    }))
-                })),
-            ))
+            .child(
+                div()
+                    .child(section_title(
+                        "Audio codec",
+                        AudioChoice::from_label(&self.info.audio_codec)
+                            .map(|audio| format!("source {}", audio.label())),
+                    ))
+                    .child(div().flex().gap_2().children(AudioChoice::ALL.map(|audio| {
+                        choice_chip(
+                            ("audio", audio as usize),
+                            audio.label(),
+                            self.export_options.audio == audio,
+                            false,
+                            true,
+                        )
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.export_options.select_audio(audio);
+                            this.sync_bitrate_fields(cx);
+                            cx.notify();
+                        }))
+                    }))),
+            )
             .child(
                 div()
                     .flex()
@@ -361,7 +374,7 @@ fn field_tile(
                 .child(
                     div()
                         .text_color(theme::text_dim())
-                        .child(SharedString::from(format!("source {source}"))),
+                        .child(SharedString::from(format!("(source {source})"))),
                 ),
         )
         .child(

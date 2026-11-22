@@ -67,7 +67,7 @@ impl AudioChoice {
         }
     }
 
-    fn from_label(label: &str) -> Option<Self> {
+    pub fn from_label(label: &str) -> Option<Self> {
         [Self::Aac, Self::Opus]
             .into_iter()
             .find(|choice| choice.label() == label)

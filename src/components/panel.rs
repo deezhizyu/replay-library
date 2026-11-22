@@ -21,7 +21,7 @@ pub fn section_title(label: &str, detail: Option<String>) -> Div {
             div()
                 .text_size(px(11.0))
                 .text_color(theme::text_dim())
-                .child(SharedString::from(text))
+                .child(SharedString::from(format!("({text})")))
         }))
 }
 
